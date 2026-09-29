@@ -88,10 +88,8 @@ def mock_api():
     api = AsyncMock()
     api.async_get_chargers.return_value = copy.deepcopy(CHARGERS)
     api.async_get_config.side_effect = lambda sn: copy.deepcopy(CONFIG)
-    api.async_get_connector.side_effect = lambda sn, cid: {
-        "data": copy.deepcopy(CONNECTOR),
-        "reservations": [],
-    }
+    api.async_get_connector.side_effect = lambda sn, cid: copy.deepcopy(CONNECTOR)
+    api.async_get_reservations.side_effect = lambda sn, cid: []
     api.async_get_charge_mode.side_effect = lambda sn, cid: copy.deepcopy(CHARGE_MODE)
     with (
         patch("custom_components.growatt_thor_cloud.GrowattThorApi", return_value=api),

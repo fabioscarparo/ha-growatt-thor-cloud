@@ -60,6 +60,8 @@ def limit_fields(plan: ChargePlan) -> tuple[str | None, str | None]:
     if value is None:
         raise PlanError(f"Set the {plan.limit} limit value first")
     if plan.limit == "duration":
+        if int(value) < 1:
+            raise PlanError("The duration limit must be at least 1 minute")
         return LIMIT_DURATION, str(int(value))
     return LIMIT_KEYS[plan.limit], f"{value:g}"
 
@@ -193,7 +195,8 @@ async def async_set_boost(
 
 # --- Off-peak slots -------------------------------------------------------
 
-# HA exposes 3 slots; the app allows 5, extra ones set there are kept untouched.
+# HA exposes 3 slots; slots beyond the third, set outside HA (up to 5 in
+# total), are kept untouched.
 OFF_PEAK_SLOTS = 3
 
 
@@ -211,7 +214,7 @@ def _sync_off_peak(plan: ChargePlan, charger: ThorCharger) -> None:
     """Follow the charger's slots while in Off-peak, or until the user stages their own.
 
     Outside Off-peak the default is the last slots used, else the cheapest
-    tariff slots, like the app.
+    tariff slots.
     """
     live = charger.charge_mode.get("mode") == MODE_OFF_PEAK
     if plan.off_peak_staged and not live:
@@ -229,18 +232,42 @@ def _sync_off_peak(plan: ChargePlan, charger: ThorCharger) -> None:
     plan.off_peak_extra = [f"{a:%H:%M}-{b:%H:%M}" for a, b in slots[OFF_PEAK_SLOTS:]]
 
 
+def _slot_minutes(slot_from: time, slot_to: time) -> set[int]:
+    """Minutes of the day a slot covers, both ends included, wrapping past midnight."""
+    start = slot_from.hour * 60 + slot_from.minute
+    end = slot_to.hour * 60 + slot_to.minute
+    if start <= end:
+        return set(range(start, end + 1))
+    return set(range(start, 24 * 60)) | set(range(end + 1))
+
+
 def period_time(plan: ChargePlan) -> str:
-    """G_PeriodTime for the used slots (start != end) plus extra ones set in the app."""
-    windows = []
+    """G_PeriodTime for the used slots (start != end) plus the extra ones kept.
+
+    Slots may not overlap; both ends are included, so slots that share a
+    minute (one ending at 12:00, the next starting at 12:00) overlap.
+    """
+    slots: list[tuple[time, time]] = []
     for index in range(1, OFF_PEAK_SLOTS + 1):
         slot_from = getattr(plan, f"off_peak_{index}_from")
         slot_to = getattr(plan, f"off_peak_{index}_to")
         if slot_from != slot_to:
-            windows.append(f"{slot_from:%H:%M}-{slot_to:%H:%M}")
-    windows += plan.off_peak_extra
-    if not windows:
+            slots.append((slot_from, slot_to))
+    slots += _parse_periods("&".join(f"x={window}" for window in plan.off_peak_extra))
+    if not slots:
         raise PlanError("Set at least one off-peak slot with a start different from its end")
-    return "&".join(f"time{i}={window}" for i, window in enumerate(windows, 1))
+    covered: set[int] = set()
+    for slot in slots:
+        minutes = _slot_minutes(*slot)
+        if covered & minutes:
+            raise PlanError(
+                "Off-peak slots cannot overlap (a slot may not start at the minute another ends)"
+            )
+        covered |= minutes
+    return "&".join(
+        f"time{i}={slot_from:%H:%M}-{slot_to:%H:%M}"
+        for i, (slot_from, slot_to) in enumerate(slots, 1)
+    )
 
 
 def off_peak_fields(charger: ThorCharger, plan: ChargePlan) -> dict[str, Any]:

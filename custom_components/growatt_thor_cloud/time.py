@@ -83,8 +83,12 @@ class ThorPlanTime(ThorEntity, TimeEntity, RestoreEntity):
         saved = PlanStoredData.restore(await self.async_get_last_extra_data())
         if saved is None:
             return
+        try:
+            value = time.fromisoformat(saved)
+        except ValueError:
+            return  # Unreadable: start unset rather than fail.
         plan = self.coordinator.plan(self._sn)
-        setattr(plan, self.entity_description.plan_field, time.fromisoformat(saved))
+        setattr(plan, self.entity_description.plan_field, value)
         if self.entity_description.live == LIVE_OFF_PEAK:
             plan.off_peak_staged = True
 

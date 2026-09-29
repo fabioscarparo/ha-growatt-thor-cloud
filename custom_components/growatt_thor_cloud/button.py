@@ -39,7 +39,8 @@ class ThorStartPlanButton(ThorEntity, ButtonEntity):
     async def async_press(self) -> None:
         with ha_errors("Could not start charging"):
             await async_start(self.coordinator, self._sn, self.coordinator.plan(self._sn))
-        await self.coordinator.async_request_refresh()
+        # Also re-reads the reservations, which a timed start creates.
+        await self.coordinator.async_refresh_after_write()
 
 
 class ThorCancelButton(ThorEntity, ButtonEntity):
@@ -55,4 +56,4 @@ class ThorCancelButton(ThorEntity, ButtonEntity):
     async def async_press(self) -> None:
         with ha_errors("Could not cancel the reservation"):
             await async_cancel_reservations(self.coordinator, self._sn)
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh_after_write()

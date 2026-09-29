@@ -22,8 +22,8 @@ USER_AGENT = "MyApp/8.5.6.0 ShinePhone"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 CODE_OK = 0
 CODE_NOT_LOGGED_IN = 501
-# After a failed login, wait before trying again: repeated logins are what gets
-# Growatt accounts rate limited or locked.
+# After a failed login, wait before trying again: Growatt's servers are known to
+# rate limit repeated logins.
 LOGIN_COOLDOWN = 300  # s
 
 # Config fields that hold credentials; never keep them in memory or state.
@@ -91,14 +91,16 @@ class GrowattThorApi:
         return {k: v for k, v in data.items() if k not in SECRET_KEYS}
 
     async def async_get_connector(self, sn: str, connector_id: int) -> dict[str, Any]:
-        """Live connector data and its reservations.
-
-        Returns {"data": {status, V/A, session energy, cost, transactionId...},
-        "reservations": [ReserveNow entries]}.
-        """
+        """Live connector data: status, V/A, session energy, cost and transaction id."""
         payload = {"sn": sn, "connectorId": connector_id}
-        resp = await self._call("/ocpp/charge/info", payload)
-        return {"data": resp.get("data") or {}, "reservations": resp.get("ReserveNow") or []}
+        return (await self._call("/ocpp/charge/info", payload)).get("data") or {}
+
+    async def async_get_reservations(
+        self, sn: str, connector_id: int
+    ) -> list[dict[str, Any]]:
+        """Scheduled starts (reservations) of a connector, with their limits."""
+        payload = {"chargeId": sn, "connectorId": str(connector_id)}
+        return (await self._call("/ocpp/api/ReserveNow", payload)).get("data") or []
 
     async def async_get_charge_mode(self, sn: str, connector_id: int) -> dict[str, Any]:
         """Active charge mode (fast / offPeak / pvLinkage) and its parameters."""
@@ -156,8 +158,7 @@ class GrowattThorApi:
         """Schedule a start at `start` (charger local time), once or every day."""
         payload: dict[str, Any] = {
             "action": "ReserveNow",
-            # Local wall-clock time with a literal "Z": that is the format the
-            # server expects, not UTC.
+            # Local wall-clock time with a literal "Z" (not UTC).
             "expiryDate": start.strftime("%Y-%m-%dT%H:%M:00.000Z"),
             "connectorId": str(connector_id),
             "chargeId": sn,
@@ -169,7 +170,7 @@ class GrowattThorApi:
         await self._call("/ocpp/cmd/", payload)
 
     async def async_cancel_reservation(self, sn: str, reservation: dict[str, Any]) -> None:
-        """Delete a reservation, echoing it back as returned by charge/info."""
+        """Delete a reservation, echoing it back as returned by async_get_reservations."""
         fields = {
             key: reservation.get(key)
             for key in (

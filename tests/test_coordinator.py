@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.growatt_thor_cloud.api import GrowattThorApiError
 
-from .common import setup_integration, state
+from .common import call, setup_integration, state
 
 
 async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, freezer) -> None:
@@ -78,3 +78,43 @@ async def test_options_polling_interval(hass: HomeAssistant, mock_api) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.runtime_data.update_interval == timedelta(seconds=120)
+
+
+async def test_data_update_does_not_reload(hass: HomeAssistant, mock_api) -> None:
+    """A new password reloads through reauth only: no extra reload (and login) here."""
+    entry = await setup_integration(hass)
+    calls = mock_api.async_get_chargers.await_count
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, "password_hash": "new-hash"}
+    )
+    await hass.async_block_till_done()
+    assert mock_api.async_get_chargers.await_count == calls
+
+
+async def test_entry_without_serial_is_skipped(hass: HomeAssistant, mock_api) -> None:
+    """A malformed charger entry does not break the whole update."""
+    mock_api.async_get_chargers.return_value = [
+        {"name": "broken"},
+        *mock_api.async_get_chargers.return_value,
+    ]
+    entry = await setup_integration(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert state(hass, "sensor", "status").state == "charging"
+
+
+async def test_start_stop_do_not_reread_settings(hass: HomeAssistant, mock_api) -> None:
+    """Start and stop only change the session, so settings are not fetched again."""
+    await setup_integration(hass)
+    await call(hass, "switch", "turn_on", "charging")
+    await call(hass, "switch", "turn_off", "charging")
+    await hass.async_block_till_done()
+    assert mock_api.async_get_config.await_count == 1
+
+
+async def test_reservation_list_failure_is_not_fatal(hass: HomeAssistant, mock_api) -> None:
+    """The reservation list is secondary: its failure keeps the rest of the data."""
+    mock_api.async_get_reservations.side_effect = GrowattThorApiError("code 1")
+    entry = await setup_integration(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert state(hass, "sensor", "status").state == "charging"
+    assert state(hass, "button", "cancel_reservation").state == "unavailable"

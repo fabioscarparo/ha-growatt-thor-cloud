@@ -26,22 +26,10 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
+from .const import ACTIVE_STATES, CONNECTOR_STATUS
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
 from .schedule import LIMIT_TYPES, next_reservation
-
-# OCPP StatusNotification values -> HA enum states (snake_case for translations).
-CONNECTOR_STATUS = {
-    "Available": "available",
-    "Preparing": "preparing",
-    "Charging": "charging",
-    "SuspendedEV": "suspended_ev",
-    "SuspendedEVSE": "suspended_evse",
-    "Finishing": "finishing",
-    "Reserved": "reserved",
-    "Unavailable": "unavailable",
-    "Faulted": "faulted",
-}
 
 # G_ExternalSamplingCurWring -> how the charger measures the grid.
 SAMPLING_DEVICES = {"0": "ct2000", "1": "meter", "2": "ct3000"}
@@ -62,13 +50,16 @@ def _tariff(charger: ThorCharger) -> float | None:
     """Price of the time slot in effect now.
 
     The configured tariff is a list of time slots (priceConf); the connector's
-    "rate" is only the price applied to a running session and reads 0 when idle.
+    "rate" is only the price applied to a running session and reads 0 when idle,
+    so it is used only during a session when no slot covers the current time.
     """
     now = dt_util.now().strftime("%H:%M")
     for slot in charger.price_conf:
         if _in_slot(str(slot.get("time", "")), now):
             return to_float(slot.get("price"))
-    return to_float(charger.connector.get("rate"))
+    if charger.connector.get("status") in ACTIVE_STATES:
+        return to_float(charger.connector.get("rate"))
+    return None
 
 
 def _power(charger: ThorCharger) -> float | None:
@@ -95,10 +86,16 @@ def _next_reservation_attrs(charger: ThorCharger) -> dict[str, Any]:
     if (upcoming := next_reservation(charger)) is None:
         return {}
     reservation = upcoming[1]
+    limit = LIMIT_TYPES.get(str(reservation.get("cKey") or ""), "none")
     return {
         "every_day": str(reservation.get("loopType")) == "0",
-        "limit": LIMIT_TYPES.get(str(reservation.get("cKey") or ""), "none"),
-        "limit_value": to_float(reservation.get("cValue")),
+        "limit": limit,
+        # cValue2 is the value to display; cValue is echoed back to cancel.
+        "limit_value": (
+            None
+            if limit == "none"
+            else to_float(reservation.get("cValue2", reservation.get("cValue")))
+        ),
     }
 
 
@@ -116,7 +113,8 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
     ThorSensorDescription(
         key="status",
         device_class=SensorDeviceClass.ENUM,
-        options=list(CONNECTOR_STATUS.values()),
+        options=list(dict.fromkeys(CONNECTOR_STATUS.values())),  # "reserved" appears 3 times
+        # Unknown values (including "None", still loading) read as unknown.
         value_fn=lambda c: CONNECTOR_STATUS.get(c.connector.get("status", "")),
     ),
     ThorSensorDescription(

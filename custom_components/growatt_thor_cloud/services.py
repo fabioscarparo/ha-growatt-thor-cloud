@@ -97,14 +97,15 @@ async def _async_start(call: ServiceCall) -> None:
         plan.start_time = call.data["start_time"]
     with ha_errors("Could not start charging"):
         await async_start(coordinator, sn, plan)
-    await coordinator.async_request_refresh()
+    # Also re-reads the reservations, which a timed start creates.
+    await coordinator.async_refresh_after_write()
 
 
 async def _async_cancel(call: ServiceCall) -> None:
     coordinator, sn = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
     with ha_errors("Could not cancel the reservation"):
         await async_cancel_reservations(coordinator, sn)
-    await coordinator.async_request_refresh()
+    await coordinator.async_refresh_after_write()
 
 
 async def _async_boost(call: ServiceCall) -> None:

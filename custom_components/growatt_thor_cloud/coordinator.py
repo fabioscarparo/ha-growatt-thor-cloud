@@ -21,6 +21,7 @@ from .const import (
     CONNECTOR_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    RESERVATION_STATES,
     STALE_DATA_GRACE,
 )
 
@@ -36,8 +37,8 @@ class ThorCharger:
     sn: str
     summary: dict[str, Any]  # /ocpp/api/list entry
     config: dict[str, Any] = field(default_factory=dict)  # /ocpp/api/configInfo
-    connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info "data"
-    reservations: list[dict[str, Any]] = field(default_factory=list)  # "ReserveNow"
+    connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info
+    reservations: list[dict[str, Any]] = field(default_factory=list)  # /ocpp/api/ReserveNow
     charge_mode: dict[str, Any] = field(default_factory=dict)  # /ocpp/chargeMode
 
     @property
@@ -82,7 +83,7 @@ class ChargePlan:
     off_peak_2_to: time = time(0, 0)
     off_peak_3_from: time = time(0, 0)
     off_peak_3_to: time = time(0, 0)
-    # Slots beyond the third set from the app ("HH:MM-HH:MM"), kept as they are.
+    # Slots beyond the third, set outside HA ("HH:MM-HH:MM"), kept as they are.
     off_peak_extra: list[str] = field(default_factory=list)
     # True once the user staged slots in HA; until then they follow the charger.
     off_peak_staged: bool = False
@@ -119,12 +120,17 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self._config_fetched_at: datetime | None = None
         self._config_stale = True
 
+    @property
+    def base_interval(self) -> timedelta:
+        """Polling interval from the options, before any back-off."""
+        return self._base_interval
+
     def plan(self, sn: str) -> ChargePlan:
         """Staged schedule and Boost values for a charger."""
         return self.plans.setdefault(sn, ChargePlan())
 
     async def async_refresh_after_write(self) -> None:
-        """Refresh soon, re-reading settings too, to confirm a change made from HA."""
+        """Refresh soon, re-reading settings and reservations, to confirm a change."""
         self._config_stale = True
         await self.async_request_refresh()
 
@@ -163,19 +169,35 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         )
         chargers: dict[str, ThorCharger] = {}
         for summary in await self.api.async_get_chargers():
-            sn = summary["chargeId"]
+            sn = summary.get("chargeId")
+            if not sn:
+                continue  # Malformed entry: nothing to address it by.
             previous = (self.data or {}).get(sn)
             if refresh_config or previous is None:
                 config = await self.api.async_get_config(sn)
             else:
                 config = previous.config
             connector = await self.api.async_get_connector(sn, CONNECTOR_ID)
+            reservations = previous.reservations if previous else []
+            # Reservations have their own request: read them while one is pending
+            # or listed (to see it go), and with the settings otherwise.
+            if (
+                refresh_config
+                or previous is None
+                or previous.reservations
+                or connector.get("status") in RESERVATION_STATES
+            ):
+                try:
+                    reservations = await self.api.async_get_reservations(sn, CONNECTOR_ID)
+                except GrowattThorApiError as err:
+                    # Secondary data: keep the last list instead of failing the update.
+                    _LOGGER.debug("Reservation list not available for %s: %s", sn, err)
             chargers[sn] = ThorCharger(
                 sn=sn,
                 summary=summary,
                 config=config,
-                connector=connector["data"],
-                reservations=connector["reservations"],
+                connector=connector,
+                reservations=reservations,
                 charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
             )
         if refresh_config:

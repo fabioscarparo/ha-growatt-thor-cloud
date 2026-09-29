@@ -49,7 +49,7 @@ NUMBERS: tuple[ThorNumberDescription, ...] = (
         device_class=NumberDeviceClass.CURRENT,
         entity_category=EntityCategory.CONFIG,
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        native_min_value=6,  # IEC 61851 minimum; the API accepts down to 3.
+        native_min_value=6,  # IEC 61851 minimum charging current.
         native_max_value=32,
         native_step=1,
         mode=NumberMode.SLIDER,
@@ -83,13 +83,17 @@ class ThorPlanNumberDescription(NumberEntityDescription):
     live: str | None = None  # Live setting it belongs to (resent while in use).
 
 
+# Any cost or energy above 0 is valid, with no upper bound; HA needs one, so it
+# is set well above any real session.
+MAX_PLAN_VALUE = 9999
+
 PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
     ThorPlanNumberDescription(
         key="limit_cost",
         plan_field="limit_cost",
-        native_min_value=0.5,
-        native_max_value=500,
-        native_step=0.5,
+        native_min_value=0.01,
+        native_max_value=MAX_PLAN_VALUE,
+        native_step=0.01,
         mode=NumberMode.BOX,
         currency=True,
     ),
@@ -98,9 +102,9 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         plan_field="limit_energy",
         device_class=NumberDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        native_min_value=0.5,
-        native_max_value=200,
-        native_step=0.5,
+        native_min_value=0.1,
+        native_max_value=MAX_PLAN_VALUE,
+        native_step=0.1,
         mode=NumberMode.BOX,
     ),
     ThorPlanNumberDescription(
@@ -109,7 +113,7 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         device_class=NumberDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         native_min_value=1,
-        native_max_value=24 * 60 - 1,  # The app's picker stops at 23 h 59 min.
+        native_max_value=24 * 60 - 1,  # Up to 23 h 59 min.
         native_step=1,
         mode=NumberMode.BOX,
         integer=True,
@@ -119,9 +123,9 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         plan_field="boost_energy",
         device_class=NumberDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        native_min_value=0.5,
-        native_max_value=200,
-        native_step=0.5,
+        native_min_value=0.1,
+        native_max_value=MAX_PLAN_VALUE,
+        native_step=0.1,
         mode=NumberMode.BOX,
         live=LIVE_BOOST,
     ),
@@ -225,12 +229,13 @@ class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         saved = PlanStoredData.restore(await self.async_get_last_extra_data())
-        if saved is not None:
-            setattr(
-                self.coordinator.plan(self._sn),
-                self.entity_description.plan_field,
-                self._convert(float(saved)),
-            )
+        if saved is None:
+            return
+        try:
+            value = self._convert(float(saved))
+        except ValueError:
+            return  # Unreadable: start unset rather than fail.
+        setattr(self.coordinator.plan(self._sn), self.entity_description.plan_field, value)
 
     @property
     def extra_restore_state_data(self) -> PlanStoredData:

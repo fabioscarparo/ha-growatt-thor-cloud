@@ -37,11 +37,9 @@ RESERVATION = {
 
 
 def _connector(mock_api, reservations=(), **data) -> None:
-    """Make charge/info return these connector fields and reservations."""
-    mock_api.async_get_connector.side_effect = lambda sn, cid: {
-        "data": {**CONNECTOR, **data},
-        "reservations": [dict(r) for r in reservations],
-    }
+    """Make charge/info return these connector fields, and the reservation list these."""
+    mock_api.async_get_connector.side_effect = lambda sn, cid: {**CONNECTOR, **data}
+    mock_api.async_get_reservations.side_effect = lambda sn, cid: [dict(r) for r in reservations]
 
 
 def _charge_mode(mock_api, **fields) -> None:
@@ -396,3 +394,162 @@ async def test_boost_needs_its_settings(hass: HomeAssistant, mock_api) -> None:
     with pytest.raises(ServiceValidationError):
         await call(hass, "switch", "turn_on", "boost")
     mock_api.async_set_charge_mode.assert_not_awaited()
+
+
+async def test_duration_limit_at_least_one_minute(hass: HomeAssistant, mock_api) -> None:
+    """A duration under a minute would be sent as 0: rejected instead."""
+    _charge_mode(mock_api, mode="fast")
+    await setup_integration(hass)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "start_charging",
+            {"device_id": _device_id(hass), "limit": "duration", "value": 0.5},
+            blocking=True,
+        )
+    mock_api.async_start_charging.assert_not_awaited()
+
+
+# --- Statuses and reservations --------------------------------------------
+
+
+@pytest.mark.parametrize("status", ["Accepted", "Reserved", "ReserveNow"])
+async def test_reservation_statuses(hass: HomeAssistant, mock_api, status: str) -> None:
+    """All three reservation statuses read as reserved; no transaction is running."""
+    _connector(mock_api, status=status)
+    await setup_integration(hass)
+    assert state(hass, "sensor", "status").state == "reserved"
+    assert state(hass, "switch", "charging").state == "off"
+    assert state(hass, "binary_sensor", "online").state == "on"
+
+
+@pytest.mark.parametrize(
+    ("status", "online"),
+    [("Unavailable", "off"), ("SomethingNew", "off"), ("None", "unknown")],
+)
+async def test_online_from_status(
+    hass: HomeAssistant, mock_api, status: str, online: str
+) -> None:
+    """Online follows the status: unavailable or unknown statuses are offline, None is loading."""
+    _connector(mock_api, status=status, online=1)  # The raw flag is ignored.
+    await setup_integration(hass)
+    assert state(hass, "binary_sensor", "online").state == online
+
+
+async def test_reservation_limit_value(hass: HomeAssistant, mock_api) -> None:
+    """The displayed limit value is cValue2; the cancel request echoes the raw entry."""
+    reservation = {**RESERVATION, "cValue": "1", "cValue2": "20.0"}
+    _connector(mock_api, status="Accepted", reservations=[reservation])
+    await setup_integration(hass)
+    assert state(hass, "sensor", "next_reservation").attributes["limit_value"] == 20.0
+
+    await call(hass, "button", "press", "cancel_reservation")
+    mock_api.async_cancel_reservation.assert_awaited_once_with(SN, reservation)
+
+
+async def test_reservations_read_only_when_needed(hass: HomeAssistant, mock_api) -> None:
+    """The reservation list is read with the settings, and every poll only while pending."""
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    assert mock_api.async_get_reservations.await_count == 1
+
+    await coordinator.async_refresh()  # Available, nothing listed: not read again.
+    assert mock_api.async_get_reservations.await_count == 1
+
+    _connector(mock_api, status="Accepted", reservations=[RESERVATION])
+    await coordinator.async_refresh()
+    assert mock_api.async_get_reservations.await_count == 2
+
+
+# --- Off-peak rules ---------------------------------------------------------
+
+
+async def test_off_peak_slots_cannot_overlap(hass: HomeAssistant, mock_api) -> None:
+    """Overlapping slots, including ones sharing a minute, are refused before sending."""
+    await setup_integration(hass)
+    await call(hass, "time", "set_value", "off_peak_1_from", time="07:00:00")
+    await call(hass, "time", "set_value", "off_peak_1_to", time="12:00:00")
+    await call(hass, "time", "set_value", "off_peak_2_from", time="12:00:00")
+    await call(hass, "time", "set_value", "off_peak_2_to", time="14:00:00")
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "select", "select_option", "charge_mode", option="off_peak")
+    mock_api.async_set_charge_mode.assert_not_awaited()
+
+    await call(hass, "time", "set_value", "off_peak_2_from", time="12:01:00")
+    await call(hass, "select", "select_option", "charge_mode", option="off_peak")
+    fields = mock_api.async_set_charge_mode.await_args.args[2]
+    assert fields["G_PeriodTime"] == "time1=07:00-12:00&time2=12:01-14:00"
+
+
+async def test_off_peak_wrapping_slots_overlap(hass: HomeAssistant, mock_api) -> None:
+    """A slot across midnight overlaps one inside its range."""
+    await setup_integration(hass)
+    await call(hass, "time", "set_value", "off_peak_1_from", time="22:00:00")
+    await call(hass, "time", "set_value", "off_peak_1_to", time="06:00:00")
+    await call(hass, "time", "set_value", "off_peak_2_from", time="05:00:00")
+    await call(hass, "time", "set_value", "off_peak_2_to", time="07:00:00")
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "select", "select_option", "charge_mode", option="off_peak")
+
+
+# --- Mode switch defaults ---------------------------------------------------
+
+
+async def test_switch_to_pv_linkage_starts_from_defaults(hass: HomeAssistant, mock_api) -> None:
+    """Coming from another mode, PV Linkage starts with Boost off, manual type, no grid import."""
+    _charge_mode(mock_api, mode="fast", importGrid=1.5, boost=1, boostType="smart", config="x")
+    await setup_integration(hass)
+    await call(hass, "select", "select_option", "charge_mode", option="pv_linkage")
+    fields = mock_api.async_set_charge_mode.await_args.args[2]
+    assert {k: fields[k] for k in ("boost", "boostType", "config", "importGrid")} == {
+        "boost": "0",
+        "boostType": "manual",
+        "config": "",
+        "importGrid": "0",
+    }
+    assert fields["G_ExternalSamplingCurWring"] == "1"  # From the charger settings.
+
+
+async def test_off_peak_always_smart(hass: HomeAssistant, mock_api) -> None:
+    """Off-peak updates always carry the smart Boost type."""
+    _charge_mode(mock_api, mode="pvLinkage", boostType="manual")
+    await setup_integration(hass)
+    await call(hass, "select", "select_option", "charge_mode", option="off_peak")
+    assert mock_api.async_set_charge_mode.await_args.args[2]["boostType"] == "smart"
+
+
+async def test_pv_linkage_needs_sampling_device(hass: HomeAssistant, mock_api) -> None:
+    """Without a grid sampling device PV Linkage cannot work: refused before sending."""
+    config = {k: v for k, v in CONFIG.items() if k != "G_ExternalSamplingCurWring"}
+    mock_api.async_get_config.side_effect = lambda sn: dict(config)
+    mock_api.async_get_charge_mode.side_effect = lambda sn, cid: {
+        k: v for k, v in {**CHARGE_MODE, "mode": "fast"}.items() if k != "G_ExternalSamplingCurWring"
+    }
+    await setup_integration(hass)
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "select", "select_option", "charge_mode", option="pv_linkage")
+    mock_api.async_set_charge_mode.assert_not_awaited()
+
+
+# --- Tariff -----------------------------------------------------------------
+
+
+async def test_tariff_outside_slots(hass: HomeAssistant, mock_api, freezer) -> None:
+    """No slot for the current time: unknown when idle, the session rate while charging."""
+    freezer.move_to("2026-09-29 12:00:00-07:00")  # Tests run in US/Pacific.
+    config = {**CONFIG, "priceConf": [{"price": "0.21", "time": "08:00-09:00"}]}
+    mock_api.async_get_config.side_effect = lambda sn: dict(config)
+    _connector(mock_api, status="Available", rate=0)
+    await setup_integration(hass)
+    assert state(hass, "sensor", "tariff").state == "unknown"
+
+
+async def test_tariff_outside_slots_while_charging(
+    hass: HomeAssistant, mock_api, freezer
+) -> None:
+    freezer.move_to("2026-09-29 12:00:00-07:00")
+    config = {**CONFIG, "priceConf": [{"price": "0.21", "time": "08:00-09:00"}]}
+    mock_api.async_get_config.side_effect = lambda sn: dict(config)
+    _connector(mock_api, status="Charging", rate=0.25)
+    await setup_integration(hass)
+    assert state(hass, "sensor", "tariff").state == "0.25"

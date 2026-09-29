@@ -19,9 +19,9 @@ start_charging:
       example: 20
       selector:
         number:
-          min: 0.5
-          max: 1439
-          step: 0.5
+          min: 0.01
+          max: 9999
+          step: 0.01
           mode: box
     start_time:
       example: "23:00"
@@ -74,8 +74,8 @@ set_boost:
       example: 20
       selector:
         number:
-          min: 0.5
-          max: 200
-          step: 0.5
+          min: 0.1
+          max: 9999
+          step: 0.1
           unit_of_measurement: kWh
           mode: box

@@ -5,8 +5,9 @@ Usage:
     python3 tools/probe_thor.py            # prompts for Growatt username/password
     GROWATT_USER=... python3 tools/probe_thor.py
 
-Only calls read endpoints (login, list, configInfo, charge/info, chargeMode) and prints
-the responses as JSON, with credentials redacted, to map fields to Home Assistant entities.
+Only calls read endpoints (login, list, configInfo, charge/info, ReserveNow, chargeMode)
+and prints the responses as JSON, with credentials redacted, to map fields to Home
+Assistant entities.
 Standard library only, so it runs anywhere without installing Home Assistant.
 """
 
@@ -18,13 +19,20 @@ import sys
 import urllib.request
 
 BASE_URL = os.environ.get("GROWATT_CHARGE_HOST", "https://evcharge.growatt.com")
-# The charger backend identifies app users as "SHINE" + account name.
+# The charger backend identifies a Growatt account as "SHINE" + account name.
 PREFIX = os.environ.get("GROWATT_CHARGE_PREFIX", "SHINE")
 LAN = 1  # Response language: 1 = English.
 USER_AGENT = "MyApp/8.5.6.0 ShinePhone Dalvik/2.1.0 (Linux; U; Android 14)"
 
 # Keys whose values must never be printed (token plus credentials stored on the charger).
-SECRET_KEYS = {"token", "G_WifiPassword", "G_CardPin", "G_Authentication", "G_4GPassword"}
+SECRET_KEYS = {
+    "token",
+    "G_WifiPassword",
+    "G_CardPin",
+    "G_Authentication",
+    "G_4GPassword",
+    "G_4GUserName",
+}
 
 
 def growatt_hash(password: str) -> str:
@@ -97,6 +105,9 @@ def main() -> int:
         for connector_id in range(1, int(charger.get("connectors") or 1) + 1):
             dump(f"charge/info {sn} connector {connector_id}", post("/ocpp/charge/info", {
                 "sn": sn, "connectorId": connector_id, "userId": user_id, "lan": LAN,
+            }, token))
+            dump(f"ReserveNow {sn} connector {connector_id}", post("/ocpp/api/ReserveNow", {
+                "chargeId": sn, "connectorId": str(connector_id), "userId": user_id, "lan": LAN,
             }, token))
             dump(f"chargeMode {sn} connector {connector_id}", post("/ocpp/chargeMode", {
                 "cmd": "select", "chargeId": sn, "connectorId": connector_id, "userId": user_id,

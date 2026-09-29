@@ -10,7 +10,7 @@ CONF_PASSWORD_HASH = "password_hash"
 CONF_SCAN_INTERVAL = "scan_interval"
 
 DEFAULT_BASE_URL = "https://evcharge.growatt.com"
-# The charger backend identifies app users as "SHINE" + account name.
+# The charger backend identifies a Growatt account as "SHINE" + account name.
 DEFAULT_USER_PREFIX = "SHINE"
 
 # Default matches the charger's meter upload period (G_MeterValueInterval = 60 s).
@@ -27,8 +27,26 @@ STALE_DATA_GRACE = timedelta(minutes=5)
 # Only single-connector home chargers are supported for now.
 CONNECTOR_ID = 1
 
-# OCPP connector states for which a transaction is running.
+# Connector states reported by the cloud -> HA enum states. Besides the OCPP
+# ones, the cloud uses "Accepted" and "ReserveNow" for a pending reservation,
+# so all three read as reserved; "None" means the data is still loading.
+CONNECTOR_STATUS = {
+    "Available": "available",
+    "Preparing": "preparing",
+    "Charging": "charging",
+    "SuspendedEV": "suspended_ev",
+    "SuspendedEVSE": "suspended_evse",
+    "Finishing": "finishing",
+    "Reserved": "reserved",
+    "Accepted": "reserved",
+    "ReserveNow": "reserved",
+    "Unavailable": "unavailable",
+    "Faulted": "faulted",
+}
+# States for which a transaction is running.
 ACTIVE_STATES = ("Charging", "SuspendedEV", "SuspendedEVSE")
+# States in which a reservation is pending.
+RESERVATION_STATES = ("Accepted", "Reserved", "ReserveNow")
 
 # Session limit keys (cKey): stop at a cost, an energy or a duration in minutes.
 LIMIT_COST = "G_SetAmount"

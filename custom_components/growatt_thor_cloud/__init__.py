@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
@@ -9,7 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import GrowattThorApi
-from .const import CONF_PASSWORD_HASH, DOMAIN
+from .const import CONF_PASSWORD_HASH, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .coordinator import GrowattThorConfigEntry, GrowattThorCoordinator
 from .services import async_setup_services
 
@@ -45,8 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GrowattThorConfigEntry) 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    # A new polling interval from the options takes effect on reload.
-    entry.async_on_unload(entry.add_update_listener(_async_reload))
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
 
@@ -55,5 +56,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: GrowattThorConfigEntry)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_reload(hass: HomeAssistant, entry: GrowattThorConfigEntry) -> None:
-    await hass.config_entries.async_reload(entry.entry_id)
+async def _async_options_updated(hass: HomeAssistant, entry: GrowattThorConfigEntry) -> None:
+    """Reload for a new polling interval.
+
+    Other entry updates (a new password from reauth) already reload on their
+    own; reloading here too would log in twice in a few seconds.
+    """
+    interval = timedelta(seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    if interval != entry.runtime_data.base_interval:
+        await hass.config_entries.async_reload(entry.entry_id)

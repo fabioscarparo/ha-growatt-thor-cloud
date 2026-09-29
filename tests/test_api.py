@@ -81,6 +81,24 @@ async def test_set_charge_mode_payload(hass, aioclient_mock) -> None:
     }
 
 
+async def test_reservations_payload(hass, aioclient_mock) -> None:
+    """The reservation list is read from /ocpp/api/ReserveNow."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(
+        f"{DEFAULT_BASE_URL}/ocpp/api/ReserveNow",
+        json={"code": 0, "data": [{"reservationId": 7}]},
+    )
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+
+    assert await api.async_get_reservations("SN1", 1) == [{"reservationId": 7}]
+    assert aioclient_mock.mock_calls[1][2] == {
+        "userId": "SHINEuser",
+        "lan": 1,
+        "chargeId": "SN1",
+        "connectorId": "1",
+    }
+
+
 async def test_login_paused_after_failure(hass, aioclient_mock) -> None:
     """A failed login blocks further attempts for a while instead of hammering the server."""
     aioclient_mock.post(LOGIN_URL, exc=TimeoutError())
@@ -102,7 +120,7 @@ async def test_rate_limited(hass, aioclient_mock) -> None:
 
 
 async def test_schedule_payloads(hass, aioclient_mock) -> None:
-    """Limited start, reservation and cancel are sent in the app's wire format."""
+    """Limited start, reservation and cancel are sent in the expected wire format."""
     aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
     aioclient_mock.post(f"{DEFAULT_BASE_URL}/ocpp/cmd/", json={"code": 0})
     aioclient_mock.post(f"{DEFAULT_BASE_URL}/ocpp/api/updateReserve", json={"code": 0})

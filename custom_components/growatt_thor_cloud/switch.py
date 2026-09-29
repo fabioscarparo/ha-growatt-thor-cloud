@@ -81,7 +81,7 @@ class ThorChargingSwitch(ThorEntity, SwitchEntity):
         except GrowattThorError as err:
             raise HomeAssistantError(f"Could not start charging: {err}") from err
         # State follows the charger, not the command: refresh to pick up the result.
-        await self.coordinator.async_refresh_after_write()
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         # RemoteStopTransaction needs the id of the running transaction; 0 means none.
@@ -94,7 +94,7 @@ class ThorChargingSwitch(ThorEntity, SwitchEntity):
             )
         except GrowattThorError as err:
             raise HomeAssistantError(f"Could not stop charging: {err}") from err
-        await self.coordinator.async_refresh_after_write()
+        await self.coordinator.async_request_refresh()
 
 
 class ThorConfigSwitch(ThorEntity, SwitchEntity):

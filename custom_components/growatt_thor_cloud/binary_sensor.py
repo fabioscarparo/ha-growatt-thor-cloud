@@ -14,14 +14,21 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import CONNECTOR_STATUS
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity
 
 
 def _online(charger: ThorCharger) -> bool | None:
-    """Cloud connection state: live connector payload first, charger config as fallback."""
-    online = charger.connector.get("online", charger.config.get("online"))
-    return None if online is None else str(online) == "1"
+    """Whether the charger is reachable, judged from its status.
+
+    "Unavailable" and statuses outside the known set mean it is not. The
+    payload's "online" flag is ignored: its meaning is unverified.
+    """
+    status = charger.connector.get("status")
+    if not status or status == "None":  # Still loading.
+        return None
+    return status in CONNECTOR_STATUS and status != "Unavailable"
 
 
 def _unlocked(charger: ThorCharger) -> bool | None:

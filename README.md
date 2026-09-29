@@ -24,6 +24,9 @@ Copy `custom_components/growatt_thor_cloud` into your Home Assistant
 ### Setup
 Add **Growatt THOR EV Charger (Cloud)** from *Settings > Devices & services > Add integration*
 using your Growatt account username and password. Only the Growatt password hash is stored.
+*Configure* on the integration sets the polling interval (see *Polling and rate limits*).
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Entities
 Settings that belong to one mode are grouped by name: **Fast - ...**, **PV Linkage - ...**,
@@ -32,16 +35,16 @@ Commands that do not apply to the current mode are shown as unavailable.
 
 | Entity | Type | Notes |
 |---|---|---|
-| Status | sensor (enum) | OCPP connector status |
+| Status | sensor (enum) | connector status; any pending reservation reads as Reserved |
 | Power | sensor, W | computed as voltage x current (single-phase) |
 | Current, Voltage | sensor | |
 | Session energy / duration / cost | sensor | reset at each session |
-| Tariff | sensor | price of the current time slot configured in the Growatt app |
+| Tariff | sensor | price of the charger's tariff slot in effect now; unknown if no slot covers now (outside a session) |
 | Session limit | sensor (enum) | limit of the current session; value in the `value` attribute |
-| Next reservation | sensor, timestamp | next scheduled start; `every_day`, `limit` attributes |
+| Next reservation | sensor, timestamp | next scheduled start; `every_day`, `limit`, `limit_value` attributes |
 | Error code, Vendor error code, IP | diagnostic | |
 | Grid sampling device, Meter type | diagnostic | CT or meter used by PV Linkage / load balancing |
-| Online | binary sensor | cloud connection of the charger |
+| Online | binary sensor | off when the status is Unavailable or not a known status |
 | Cable lock | binary sensor | on = unlocked |
 | Charge mode | select | Fast / PV Linkage / Off-peak |
 | Charging | switch | remote start / stop, no limit |
@@ -50,12 +53,16 @@ Commands that do not apply to the current mode are shown as unavailable.
 | Authorization mode | select | APP/RFID / RFID / Plug & Charge |
 | Load balancing | switch | dynamic load balancing with the external meter |
 | LCD display | switch | off = screen turns off automatically |
-| Fast - Charge limit, Cost / Energy / Duration limit, Start, Start time | config | scheduled charge |
+| Fast - Charge limit, Start | select | scheduled charge |
+| Fast - Cost / Energy / Duration limit | number | scheduled charge; duration in minutes |
+| Fast - Start time | time | scheduled charge |
 | Fast - Start scheduled charge | button | Fast only |
 | Fast - Cancel reservation | button | available when a reservation exists |
 | PV Linkage - Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
 | Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
-| Boost - Type, From, To, Departure time, Energy | config | Boost settings |
+| Boost - Type | select | manual / smart (Off-peak is always smart) |
+| Boost - From, To, Departure time | time | manual window / smart deadline |
+| Boost - Energy | number | kWh guaranteed by smart Boost |
 | Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
 | Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
 
@@ -67,22 +74,28 @@ Commands that do not apply to the current mode are shown as unavailable.
   the surplus drops below it; with P kW the grid tops up to P kW to keep charging.
 - **Off-peak**: charges only in the off-peak slots.
 
-Switching mode from Home Assistant turns Boost off.
+Switching mode from Home Assistant turns Boost off, and PV Linkage then starts without grid
+import (set *PV Linkage - Grid import power* afterwards). PV Linkage needs a grid sampling
+device (CT or meter) set on the charger.
 
 ### Scheduled charging (Fast)
 Pick a **Charge limit** (none, cost, energy or duration) and its value, a **Start** (now, at
 time, every day) and a **Start time**, then press **Start scheduled charge**. A start at a time
 becomes a reservation on the charger, shown in **Next reservation** and removed with
-**Cancel reservation**. These settings live in Home Assistant until you press the button and
-are kept across restarts. Nothing is preset: the charger does not keep these values, so they
-start empty and pressing the button with a missing value reports an error.
+**Cancel reservation**. A start time already passed today is scheduled for tomorrow. Cost and
+energy limits must be above 0; a duration limit goes from 1 minute to 23 h 59 min. These
+settings live in Home Assistant until you press the button and are kept across restarts.
+Nothing is preset: the charger does not keep these values, so they start empty (shown as
+unknown) and pressing the button with a missing value reports an error.
 
 ### Off-peak slots
 Up to 3 slots (**Off-peak - Slot n from / to**); a slot whose start equals its end, such as
 00:00-00:00, is unused. While in Off-peak they show the charger's slots and changes are sent
-right away; otherwise they are used the next time Off-peak is selected. Until you set them they
-follow the last slots used, else the cheapest tariff slots, else they are unused. The Growatt app allows up to 5 slots:
-extra slots set there are kept when changing the first 3 from Home Assistant.
+right away; otherwise they are used the next time Off-peak is selected. Until you set them
+they follow the last slots used, else the cheapest tariff slots, else they are unused, and
+selecting Off-peak with no slot in use reports an error. Slots may not overlap; both ends
+count, so a slot ending at 12:00 and one starting at 12:00 overlap. Slots beyond the third,
+set outside Home Assistant (up to 5 in total), are kept when changing the first 3.
 
 ### Boost
 In PV Linkage or Off-peak, **Boost** charges regardless of PV:
@@ -106,25 +119,38 @@ data:
   every_day: true
 ```
 
-`start_charging` works in Fast only.
+`start_charging` works in Fast only; with `every_day` a `start_time` is required, and a
+`duration` limit is in minutes (at least 1). Values passed to an action are used as given and
+do not change the dashboard settings.
 
 - `growatt_thor_cloud.cancel_reservation`: cancel the scheduled starts.
-- `growatt_thor_cloud.set_boost`: `enabled`, `type` (manual/smart), `from`, `to`, `departure`, `energy`.
+- `growatt_thor_cloud.set_boost`: `enabled`, `type` (manual/smart), `from`, `to`, `departure`,
+  `energy`; missing values are taken from the Boost settings. The Boost entities follow what
+  was sent.
 
 ## Polling and rate limits
-Growatt's cloud limits how often it can be queried. The integration:
+Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
-  settings only every 5 minutes or right after a change made from Home Assistant;
+  settings and the reservation list only every 5 minutes or right after a change made from
+  Home Assistant (the reservation list also on every poll while a reservation is pending or
+  listed);
 - logs in only when the session expires, one login at a time, and waits 5 minutes after a
   failed login before trying again;
 - on errors or rate limiting keeps the last values for 5 minutes and slows polling down
   (2, 5, then 10 minutes), back to normal as soon as the cloud answers;
 - retries the setup later if the cloud is unreachable at startup.
 
+If Growatt rejects the login, Home Assistant asks for the password again (*Settings > Devices
+& services*) and stops polling until then, so a wrong password never keeps retrying.
+
 ## Limitations
 - Data is only as fresh as the Growatt cloud.
 - Unofficial, undocumented API: Growatt can change it without notice.
 - Single-connector chargers only.
+- *Power* is voltage x current, exact for single-phase chargers only.
+- Scheduled starts, reservations and tariff slots use Home Assistant's time zone, which must
+  match the charger's.
+- Chargers added to the account later appear after reloading the integration.
 
 ## Development
 - [API_NOTES.md](API_NOTES.md): endpoints, payloads and field meanings.
@@ -134,7 +160,8 @@ Growatt's cloud limits how often it can be queried. The integration:
   ```bash
   python3 tools/probe_thor.py
   ```
-- Tests (config flow, entities, commands and API client, against a mocked cloud):
+- Tests (config flow, entities, actions, polling behaviour and API client, against a mocked
+  cloud):
   ```bash
   pip install -r requirements_test.txt
   pytest
