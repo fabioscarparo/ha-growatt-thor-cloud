@@ -64,3 +64,6 @@ using your ShinePhone username and password. Only the Growatt password hash is s
   pip install -r requirements_test.txt
   pytest
   ```
+
+## License
+MIT, see [LICENSE](LICENSE).
