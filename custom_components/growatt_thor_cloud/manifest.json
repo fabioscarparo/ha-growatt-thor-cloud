@@ -1,0 +1,14 @@
+{
+  "domain": "growatt_thor_cloud",
+  "name": "Growatt THOR EV Charger (Cloud)",
+  "codeowners": [
+    "@fabioscarparo"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/fabioscarparo/ha-growatt-thor-cloud",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/fabioscarparo/ha-growatt-thor-cloud/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

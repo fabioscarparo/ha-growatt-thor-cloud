@@ -1,0 +1,6 @@
+# Local working material, never commit.
+re/
+__pycache__/
+.pytest_cache/
+.venv/
+.DS_Store

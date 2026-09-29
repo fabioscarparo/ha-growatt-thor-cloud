@@ -1,0 +1,131 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Growatt THOR",
+        "description": "Accedi con il tuo account ShinePhone.",
+        "data": {
+          "username": "Nome utente",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Nuova autenticazione",
+        "description": "Inserisci la password ShinePhone per {username}.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Nome utente o password non validi.",
+      "cannot_connect": "Impossibile raggiungere il servizio Growatt delle colonnine.",
+      "no_chargers": "Nessuna colonnina trovata su questo account."
+    },
+    "abort": {
+      "already_configured": "Questo account è già configurato.",
+      "reauth_successful": "Autenticazione aggiornata."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "name": "Online"
+      },
+      "cable_lock": {
+        "name": "Blocco cavo"
+      }
+    },
+    "number": {
+      "max_current": {
+        "name": "Corrente massima"
+      },
+      "solar_limit_power": {
+        "name": "Soglia potenza solare"
+      }
+    },
+    "select": {
+      "solar_mode": {
+        "name": "Modalità solare",
+        "state": {
+          "fast": "FAST",
+          "eco": "ECO",
+          "eco_plus": "ECO+"
+        }
+      },
+      "authorization_mode": {
+        "name": "Modalità di autorizzazione",
+        "state": {
+          "app": "App",
+          "rfid": "RFID",
+          "plug_and_charge": "Plug & Charge"
+        }
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Stato",
+        "state": {
+          "available": "Disponibile",
+          "preparing": "In preparazione",
+          "charging": "In carica",
+          "suspended_ev": "Sospesa dal veicolo",
+          "suspended_evse": "Sospesa dalla colonnina",
+          "finishing": "In chiusura",
+          "reserved": "Prenotata",
+          "unavailable": "Non disponibile",
+          "faulted": "Guasto"
+        }
+      },
+      "charge_mode": {
+        "name": "Modalità di ricarica",
+        "state": {
+          "fast": "Veloce",
+          "off_peak": "Fascia ridotta",
+          "pv_linkage": "Fotovoltaico"
+        }
+      },
+      "power": {
+        "name": "Potenza"
+      },
+      "current": {
+        "name": "Corrente"
+      },
+      "voltage": {
+        "name": "Tensione"
+      },
+      "session_energy": {
+        "name": "Energia sessione"
+      },
+      "session_duration": {
+        "name": "Durata sessione"
+      },
+      "session_cost": {
+        "name": "Costo sessione"
+      },
+      "tariff": {
+        "name": "Tariffa"
+      },
+      "error_code": {
+        "name": "Codice errore"
+      },
+      "vendor_error_code": {
+        "name": "Codice errore produttore"
+      },
+      "ip_address": {
+        "name": "Indirizzo IP"
+      }
+    },
+    "switch": {
+      "charging": {
+        "name": "Ricarica"
+      },
+      "load_balancing": {
+        "name": "Bilanciamento carico"
+      },
+      "lcd_display": {
+        "name": "Display LCD"
+      }
+    }
+  }
+}

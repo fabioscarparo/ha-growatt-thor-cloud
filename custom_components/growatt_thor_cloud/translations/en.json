@@ -1,0 +1,131 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Growatt THOR",
+        "description": "Sign in with your ShinePhone account.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "Enter the ShinePhone password for {username}.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password.",
+      "cannot_connect": "Cannot reach the Growatt charger service.",
+      "no_chargers": "No EV charger found on this account."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": {
+        "name": "Online"
+      },
+      "cable_lock": {
+        "name": "Cable lock"
+      }
+    },
+    "number": {
+      "max_current": {
+        "name": "Max current"
+      },
+      "solar_limit_power": {
+        "name": "Solar limit power"
+      }
+    },
+    "select": {
+      "solar_mode": {
+        "name": "Solar mode",
+        "state": {
+          "fast": "FAST",
+          "eco": "ECO",
+          "eco_plus": "ECO+"
+        }
+      },
+      "authorization_mode": {
+        "name": "Authorization mode",
+        "state": {
+          "app": "App",
+          "rfid": "RFID",
+          "plug_and_charge": "Plug & Charge"
+        }
+      }
+    },
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "available": "Available",
+          "preparing": "Preparing",
+          "charging": "Charging",
+          "suspended_ev": "Suspended by vehicle",
+          "suspended_evse": "Suspended by charger",
+          "finishing": "Finishing",
+          "reserved": "Reserved",
+          "unavailable": "Unavailable",
+          "faulted": "Faulted"
+        }
+      },
+      "charge_mode": {
+        "name": "Charge mode",
+        "state": {
+          "fast": "Fast",
+          "off_peak": "Off-peak",
+          "pv_linkage": "PV linkage"
+        }
+      },
+      "power": {
+        "name": "Power"
+      },
+      "current": {
+        "name": "Current"
+      },
+      "voltage": {
+        "name": "Voltage"
+      },
+      "session_energy": {
+        "name": "Session energy"
+      },
+      "session_duration": {
+        "name": "Session duration"
+      },
+      "session_cost": {
+        "name": "Session cost"
+      },
+      "tariff": {
+        "name": "Tariff"
+      },
+      "error_code": {
+        "name": "Error code"
+      },
+      "vendor_error_code": {
+        "name": "Vendor error code"
+      },
+      "ip_address": {
+        "name": "IP address"
+      }
+    },
+    "switch": {
+      "charging": {
+        "name": "Charging"
+      },
+      "load_balancing": {
+        "name": "Load balancing"
+      },
+      "lcd_display": {
+        "name": "LCD display"
+      }
+    }
+  }
+}
