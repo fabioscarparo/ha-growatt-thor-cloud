@@ -107,6 +107,15 @@ class GrowattThorApi:
         """Change one setting; `value` must already be in the wire format for `key`."""
         await self._call("/ocpp/api/config", {"chargeId": sn, key: value})
 
+    async def async_set_charge_mode(
+        self, sn: str, connector_id: int, fields: dict[str, Any]
+    ) -> None:
+        """Switch charge mode; `fields` is the whole mode object (mode, boost, importGrid...)."""
+        await self._call(
+            "/ocpp/chargeMode",
+            {"cmd": "update", "chargeId": sn, "connectorId": str(connector_id), **fields},
+        )
+
     async def async_start_charging(self, sn: str, connector_id: int) -> None:
         """Send an OCPP RemoteStartTransaction through the cloud."""
         await self._call(

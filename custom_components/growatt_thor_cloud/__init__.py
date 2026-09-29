@@ -1,4 +1,4 @@
-"""Growatt THOR EV charger integration (ShinePhone cloud API)."""
+"""Growatt THOR EV charger integration (Growatt cloud API)."""
 
 from __future__ import annotations
 

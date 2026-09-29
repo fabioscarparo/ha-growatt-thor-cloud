@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only probe for the Growatt EV charger cloud API used by ShinePhone.
+"""Read-only probe for the Growatt EV charger cloud API.
 
 Usage:
-    python3 tools/probe_thor.py            # prompts for ShinePhone username/password
+    python3 tools/probe_thor.py            # prompts for Growatt username/password
     GROWATT_USER=... python3 tools/probe_thor.py
 
 Only calls read endpoints (login, list, configInfo, charge/info, chargeMode) and prints
@@ -18,7 +18,7 @@ import sys
 import urllib.request
 
 BASE_URL = os.environ.get("GROWATT_CHARGE_HOST", "https://evcharge.growatt.com")
-# The charger backend identifies ShinePhone users as "SHINE" + account name.
+# The charger backend identifies app users as "SHINE" + account name.
 PREFIX = os.environ.get("GROWATT_CHARGE_PREFIX", "SHINE")
 LAN = 1  # Response language: 1 = English.
 USER_AGENT = "MyApp/8.5.6.0 ShinePhone Dalvik/2.1.0 (Linux; U; Android 14)"
@@ -70,8 +70,8 @@ def dump(title: str, data: dict) -> None:
 
 def main() -> int:
     """Log in, then dump every read endpoint for each charger and connector."""
-    account = os.environ.get("GROWATT_USER") or input("ShinePhone username: ")
-    password = os.environ.get("GROWATT_PASSWORD") or getpass.getpass("ShinePhone password: ")
+    account = os.environ.get("GROWATT_USER") or input("Growatt username: ")
+    password = os.environ.get("GROWATT_PASSWORD") or getpass.getpass("Growatt password: ")
     user_id = PREFIX + account
 
     login = post("/ocpp/user", {

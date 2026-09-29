@@ -1,6 +1,6 @@
 # Growatt EV charger (THOR) cloud API
 
-Notes on the cloud service behind the ShinePhone charger pages, as used by this integration.
+Notes on Growatt's EV charger cloud service, as used by this integration.
 Field meanings were checked against a real THOR 07AS-P-V1 (firmware `THOR_07ASB-VA1.2.3.0-NOVO`).
 
 ## Transport
@@ -14,7 +14,7 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware `THOR_07ASB-
 ```json
 {"cmd": "shineLogin", "userId": "SHINE<account>", "password": "<growatt_md5>", "lan": 1}
 ```
-- `userId` = prefix + ShinePhone account name. Prefix defaults to `SHINE`; the server may
+- `userId` = prefix + Growatt account name. Prefix defaults to `SHINE`; the server may
   override it via `prefix` on `charger` entries of `https://energy.growatt.com/room/`
   (`{"cmd":"devList","userId":...,"userServerUrl":...,"lan":...}`).
 - `password` = MD5 hex where a single-digit byte is padded with `c` instead of `0`
@@ -43,14 +43,19 @@ Field meanings:
 - Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,
   one entry per time slot; slots may wrap past midnight. Set with `POST /ocpp/api/`
   `{"cmd":"addPrice","chargeId","priceConf":[{"time","price","name":""}],"userId","lan"}`.
-- `G_ChargerMode` (authorization): 1 = App, 2 = RFID, 3 = Plug&Charge (sent as int).
-- `G_SolarMode`: 0 = FAST, 1 = ECO, 2 = ECO+ (sent as int).
+- `G_ChargerMode` (authorization): 1 = APP/RFID, 2 = RFID, 3 = Plug&Charge (sent as int).
+- `G_SolarMode`: 0 = FAST, 1 = ECO (PV surplus + grid import set by `G_SolarLimitPower`),
+  2 = ECO+ (sent as int). ECO+ is not documented; it matches PV Linkage with grid import off.
+  Low-level setting behind the charge modes: prefer `chargeMode`.
 - `G_MaxCurrent`: sent as string, minimum 3 A.
-- `G_SolarLimitPower`: kW, sent as float.
+- `G_SolarLimitPower`: kW, grid import used by ECO, sent as float.
 - `G_ExternalLimitPowerEnable`: 0 = off, 1 = on (sent as int).
 - `G_LCDCloseEnable`: `"Enable"` = screen turns off automatically, `"Disable"` = always on.
-- `chargeMode.mode`: `fast`, `offPeak`, `pvLinkage` (+ `boostType` `manual`/`smart`). Changing it
-  is `cmd: "update"` with the whole mode object (`G_PeriodTime`, `boost`, `config`, `importGrid`...).
+- `chargeMode.mode`: `fast`, `offPeak`, `pvLinkage`, as picked on the Growatt app charger screen.
+  Other fields: `boost` (0/1), `boostType` (`manual`/`smart`), `config` (smart boost
+  `contime=HH:MM&energy=<kWh>`), `importGrid` (kW), `G_PeriodTime` (off-peak slots).
+- PV Linkage needs a CT or meter. Minimum charging power: 1.4 kW single-phase, 4.1 kW three-phase.
+  `importGrid` 0 = surplus only, charging pauses below the minimum; P kW = grid tops up to P.
 
 Connector status values (OCPP): `Available, Preparing, Charging, SuspendedEV, SuspendedEVSE,
 Finishing, Reserved, Unavailable, Faulted`.
@@ -63,3 +68,10 @@ Finishing, Reserved, Unavailable, Faulted`.
 - Settings: `POST /ocpp/api/config` `{"chargeId","userId","lan","<key>": value}` with keys like
   `G_MaxCurrent`, `G_ChargerMode`, `G_SolarMode`, `G_SolarLimitPower`, `G_ExternalLimitPower`,
   `G_ExternalLimitPowerEnable`, `G_PeakValleyEnable`, `G_AutoChargeTime`, `G_LCDCloseEnable`.
+- Charge mode: `POST /ocpp/chargeMode` `{"cmd":"update","chargeId","connectorId","userId","lan","mode",...}`
+  with the whole mode object:
+  - `fast`: nothing else.
+  - `pvLinkage`: `boost`, `boostType`, `config`, `importGrid`, plus the meter setup
+    `G_ExternalSamplingCurWring` and `G_PowerMeterType` from `configInfo`.
+  - `offPeak`: `boost`, `boostType`, `config`, `G_PeriodTime` = `"time1=HH:MM-HH:MM&time2=..."`.
+    Default slots are the cheapest `priceConf` entries.

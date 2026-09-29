@@ -8,7 +8,7 @@ DOMAIN = "growatt_thor_cloud"
 CONF_PASSWORD_HASH = "password_hash"
 
 DEFAULT_BASE_URL = "https://evcharge.growatt.com"
-# The charger backend identifies ShinePhone users as "SHINE" + account name.
+# The charger backend identifies app users as "SHINE" + account name.
 DEFAULT_USER_PREFIX = "SHINE"
 
 # Matches the charger's meter upload period (G_MeterValueInterval = 60 s).

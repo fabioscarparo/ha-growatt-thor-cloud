@@ -29,6 +29,19 @@ class ThorCharger:
     connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info
     charge_mode: dict[str, Any] = field(default_factory=dict)  # /ocpp/chargeMode
 
+    @property
+    def price_conf(self) -> list[dict[str, Any]]:
+        """Tariff time slots set by the user: [{"time": "HH:MM-HH:MM", "price": "0.21"}]."""
+        return self.config.get("priceConf") or self.summary.get("priceConf") or []
+
+    @property
+    def rated_power_kw(self) -> float | None:
+        """Charger rating in kW (config "power" is in W, e.g. 7000 for a THOR 07AS)."""
+        try:
+            return float(self.config["power"]) / 1000
+        except (KeyError, TypeError, ValueError):
+            return None
+
 
 class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
     """Polls every charger on the account; data is keyed by serial number."""

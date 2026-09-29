@@ -39,8 +39,6 @@ CONNECTOR_STATUS = {
     "Unavailable": "unavailable",
     "Faulted": "faulted",
 }
-# /ocpp/chargeMode "mode" values -> HA enum states.
-CHARGE_MODES = {"fast": "fast", "offPeak": "off_peak", "pvLinkage": "pv_linkage"}
 
 
 def _in_slot(slot: str, now: str) -> bool:
@@ -60,9 +58,8 @@ def _tariff(charger: ThorCharger) -> float | None:
     The configured tariff is a list of time slots (priceConf); the connector's
     "rate" is only the price applied to a running session and reads 0 when idle.
     """
-    slots = charger.config.get("priceConf") or charger.summary.get("priceConf") or []
     now = dt_util.now().strftime("%H:%M")
-    for slot in slots:
+    for slot in charger.price_conf:
         if _in_slot(str(slot.get("time", "")), now):
             return to_float(slot.get("price"))
     return to_float(charger.connector.get("rate"))
@@ -92,12 +89,6 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         options=list(CONNECTOR_STATUS.values()),
         value_fn=lambda c: CONNECTOR_STATUS.get(c.connector.get("status", "")),
-    ),
-    ThorSensorDescription(
-        key="charge_mode",
-        device_class=SensorDeviceClass.ENUM,
-        options=list(CHARGE_MODES.values()),
-        value_fn=lambda c: CHARGE_MODES.get(c.charge_mode.get("mode", "")),
     ),
     ThorSensorDescription(
         key="power",

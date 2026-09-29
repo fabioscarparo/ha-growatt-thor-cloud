@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Growatt THOR",
-        "description": "Sign in with your ShinePhone account.",
+        "description": "Sign in with your Growatt account.",
         "data": {
           "username": "Username",
           "password": "Password"
@@ -11,7 +11,7 @@
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
-        "description": "Enter the ShinePhone password for {username}.",
+        "description": "Enter the Growatt password for {username}.",
         "data": {
           "password": "Password"
         }
@@ -41,22 +41,33 @@
         "name": "Max current"
       },
       "solar_limit_power": {
-        "name": "Solar limit power"
+        "name": "ECO grid limit"
+      },
+      "import_grid_power": {
+        "name": "Grid import power"
       }
     },
     "select": {
+      "charge_mode": {
+        "name": "Charge mode",
+        "state": {
+          "fast": "Fast",
+          "pv_linkage": "PV Linkage",
+          "off_peak": "Off-peak"
+        }
+      },
       "solar_mode": {
         "name": "Solar mode",
         "state": {
           "fast": "FAST",
-          "eco": "ECO",
-          "eco_plus": "ECO+"
+          "eco": "ECO (surplus + grid)",
+          "eco_plus": "ECO+ (surplus only)"
         }
       },
       "authorization_mode": {
         "name": "Authorization mode",
         "state": {
-          "app": "App",
+          "app": "APP/RFID",
           "rfid": "RFID",
           "plug_and_charge": "Plug & Charge"
         }
@@ -75,14 +86,6 @@
           "reserved": "Reserved",
           "unavailable": "Unavailable",
           "faulted": "Faulted"
-        }
-      },
-      "charge_mode": {
-        "name": "Charge mode",
-        "state": {
-          "fast": "Fast",
-          "off_peak": "Off-peak",
-          "pv_linkage": "PV linkage"
         }
       },
       "power": {

@@ -59,3 +59,21 @@ async def test_login_rejected(hass, aioclient_mock) -> None:
     api = GrowattThorApi(async_get_clientsession(hass), "user", "bad")
     with pytest.raises(GrowattThorAuthError):
         await api.login()
+
+
+async def test_set_charge_mode_payload(hass, aioclient_mock) -> None:
+    """Mode updates go to /ocpp/chargeMode with cmd=update and a string connector id."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(f"{DEFAULT_BASE_URL}/ocpp/chargeMode", json={"code": 0})
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+
+    await api.async_set_charge_mode("SN1", 1, {"mode": "fast"})
+
+    assert aioclient_mock.mock_calls[1][2] == {
+        "userId": "SHINEuser",
+        "lan": 1,
+        "cmd": "update",
+        "chargeId": "SN1",
+        "connectorId": "1",
+        "mode": "fast",
+    }

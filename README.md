@@ -1,13 +1,12 @@
 # Growatt THOR EV Charger for Home Assistant
 
-Custom integration for Growatt THOR wallboxes, using the same cloud service as the
-ShinePhone app (`evcharge.growatt.com`). The official Growatt integration covers
-inverters only.
+Custom integration for Growatt THOR wallboxes, using Growatt's cloud service
+(`evcharge.growatt.com`). The official Growatt integration covers inverters only.
 
 ## Tested with
 - THOR 07AS-P-V1, firmware `THOR_07ASB-VA1.2.3.0-NOVO`
 
-Other THOR models registered in ShinePhone should work, but have not been tested.
+Other THOR models registered on a Growatt account should work, but have not been tested.
 
 Requires Home Assistant 2025.3 or newer.
 
@@ -24,27 +23,38 @@ Copy `custom_components/growatt_thor_cloud` into your Home Assistant
 
 ### Setup
 Add **Growatt THOR EV Charger (Cloud)** from *Settings > Devices & services > Add integration*
-using your ShinePhone username and password. Only the Growatt password hash is stored.
+using your Growatt account username and password. Only the Growatt password hash is stored.
 
 ## Entities
 | Entity | Type | Notes |
 |---|---|---|
 | Status | sensor (enum) | OCPP connector status |
-| Charge mode | sensor (enum) | fast / off-peak / PV linkage |
 | Power | sensor, W | computed as voltage x current (single-phase) |
 | Current, Voltage | sensor | |
 | Session energy / duration / cost | sensor | reset at each session |
-| Tariff | sensor | price per kWh configured in ShinePhone |
+| Tariff | sensor | price of the current time slot configured in the Growatt app |
 | Error code, Vendor error code, IP | diagnostic | |
 | Online | binary sensor | cloud connection of the charger |
 | Cable lock | binary sensor | on = unlocked |
 | Charging | switch | remote start / stop |
 | Load balancing | switch | dynamic load balancing with the external meter |
 | LCD display | switch | off = screen turns off automatically |
+| Charge mode | select | Fast / PV Linkage / Off-peak, see below |
+| Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
 | Max current | number | 6-32 A |
-| Solar limit power | number | kW, PV linkage threshold / allowed grid import |
-| Solar mode | select | FAST / ECO / ECO+ (no PV, PV linkage, PV linkage+) |
-| Authorization mode | select | App / RFID / Plug & Charge |
+| Authorization mode | select | APP/RFID / RFID / Plug & Charge |
+| Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
+| ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
+
+### Charge modes
+- **Fast**: charges at maximum power, from PV or grid.
+- **PV Linkage**: charges with PV surplus; needs a CT or meter. The minimum charging power is
+  1.4 kW single-phase (4.1 kW three-phase). With *Grid import power* at 0 charging pauses when
+  the surplus drops below it; with P kW the grid tops up to P kW to keep charging.
+- **Off-peak**: charges only in the off-peak time slots. Uses the slots chosen in the Growatt app,
+  or the cheapest tariff slots if none were chosen; tariffs must be set in the Growatt app first.
+
+Boost (manual or smart) is configured in the Growatt app; switching mode from Home Assistant turns it off.
 
 ## Limitations
 - Cloud polling every 60 s; data is only as fresh as the Growatt cloud.

@@ -21,14 +21,14 @@ REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 
 class GrowattThorConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Ask for the ShinePhone account; only the Growatt password hash is stored."""
+    """Ask for the Growatt account; only the Growatt password hash is stored."""
 
     VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Initial setup: one config entry per ShinePhone account."""
+        """Initial setup: one config entry per Growatt account."""
         errors: dict[str, str] = {}
         if user_input is not None:
             username = user_input[CONF_USERNAME].strip()

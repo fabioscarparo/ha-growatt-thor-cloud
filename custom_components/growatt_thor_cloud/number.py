@@ -18,6 +18,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import GrowattThorError
+from .charge_mode import MODE_PV_LINKAGE, charge_mode_fields, format_kw
+from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity, to_float
 
@@ -46,11 +48,13 @@ NUMBERS: tuple[ThorNumberDescription, ...] = (
         config_key="G_MaxCurrent",
         to_api=lambda v: str(int(v)),  # Sent as a string.
     ),
-    # PV linkage threshold / grid import allowed in solar modes.
+    # Low-level grid import used by the ECO solar mode (manual, parameter 21).
+    # Hidden by default: the PV Linkage grid import below is the everyday control.
     ThorNumberDescription(
         key="solar_limit_power",
         device_class=NumberDeviceClass.POWER,
         entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
         native_min_value=0,
         native_step=0.01,
@@ -66,13 +70,13 @@ async def async_setup_entry(
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """One set of numeric settings per charger found at setup."""
+    """Per charger: one number per numeric setting plus the PV Linkage grid import."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        ThorNumber(coordinator, sn, description)
-        for sn in coordinator.data
-        for description in NUMBERS
-    )
+    entities: list[NumberEntity] = []
+    for sn in coordinator.data:
+        entities.extend(ThorNumber(coordinator, sn, description) for description in NUMBERS)
+        entities.append(ThorImportGridNumber(coordinator, sn))
+    async_add_entities(entities)
 
 
 class ThorNumber(ThorEntity, NumberEntity):
@@ -84,9 +88,7 @@ class ThorNumber(ThorEntity, NumberEntity):
         super().__init__(coordinator, sn, description.key)
         self.entity_description = description
         if description.native_max_value is None:
-            # Charger rating in W (e.g. 7000 for a THOR 07AS).
-            rated = to_float(self.charger.config.get("power"))
-            self._attr_native_max_value = rated / 1000 if rated else DEFAULT_MAX_POWER_KW
+            self._attr_native_max_value = self.charger.rated_power_kw or DEFAULT_MAX_POWER_KW
 
     @property
     def native_value(self) -> float | None:
@@ -101,5 +103,44 @@ class ThorNumber(ThorEntity, NumberEntity):
         except GrowattThorError as err:
             raise HomeAssistantError(f"Could not set {key}: {err}") from err
         self.charger.config[key] = api_value
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+
+class ThorImportGridNumber(ThorEntity, NumberEntity):
+    """Grid power allowed to top up PV surplus in PV Linkage (0 = surplus only).
+
+    With 0 kW charging pauses when surplus drops below the 1.4 kW minimum
+    (4.1 kW three-phase); with P kW the grid supplies up to P to keep charging.
+    """
+
+    _attr_device_class = NumberDeviceClass.POWER
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_native_min_value = 0
+    _attr_native_step = 0.1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "import_grid_power")
+        self._attr_native_max_value = self.charger.rated_power_kw or DEFAULT_MAX_POWER_KW
+
+    @property
+    def available(self) -> bool:
+        # Only meaningful while in PV Linkage.
+        return super().available and self.charger.charge_mode.get("mode") == MODE_PV_LINKAGE
+
+    @property
+    def native_value(self) -> float | None:
+        return to_float(self.charger.charge_mode.get("importGrid"))
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Resend the PV Linkage mode object with the new grid import."""
+        fields = charge_mode_fields(self.charger, MODE_PV_LINKAGE, importGrid=format_kw(value))
+        try:
+            await self.coordinator.api.async_set_charge_mode(self._sn, CONNECTOR_ID, fields)
+        except GrowattThorError as err:
+            raise HomeAssistantError(f"Could not set grid import: {err}") from err
+        self.charger.charge_mode.update(fields)
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()

@@ -39,6 +39,8 @@ CONFIG = {
     "G_LCDCloseEnable": "Disable",
     "G_SolarLimitPower": 1.38,
     "power": 7000,
+    "G_ExternalSamplingCurWring": 1,
+    "G_PowerMeterType": "Eastron SDM230",
     "priceConf": [{"price": "0.21", "time": "00:00-23:59"}],
 }
 CONNECTOR = {
@@ -57,7 +59,18 @@ CONNECTOR = {
     "errorCode": "NoError",
     "vendorErrorCode": "",
 }
-CHARGE_MODE = {"chargeId": f"{SN}_1", "connectorId": 1, "mode": "pvLinkage"}
+CHARGE_MODE = {
+    "chargeId": f"{SN}_1",
+    "connectorId": 1,
+    "mode": "pvLinkage",
+    "boost": 0,
+    "boostType": "manual",
+    "config": "",
+    "importGrid": 0.0,
+    "G_PeriodTime": "",
+    "G_ExternalSamplingCurWring": "0",
+    "G_PowerMeterType": "",
+}
 
 
 @pytest.fixture(autouse=True)

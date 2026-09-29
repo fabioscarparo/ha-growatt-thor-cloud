@@ -1,4 +1,4 @@
-"""Config selects for the Growatt THOR integration."""
+"""Selects for the Growatt THOR integration."""
 
 from __future__ import annotations
 
@@ -11,8 +11,17 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import GrowattThorError
+from .charge_mode import MODE_FAST, MODE_OFF_PEAK, MODE_PV_LINKAGE, charge_mode_fields
+from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity
+
+# HA option -> /ocpp/chargeMode "mode" value.
+CHARGE_MODES = {
+    "fast": MODE_FAST,
+    "pv_linkage": MODE_PV_LINKAGE,
+    "off_peak": MODE_OFF_PEAK,
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -24,13 +33,16 @@ class ThorSelectDescription(SelectEntityDescription):
 
 
 SELECTS: tuple[ThorSelectDescription, ...] = (
-    # FAST = no PV, ECO = PV linkage, ECO+ = PV linkage+.
+    # Low-level solar setting behind the charge modes (manual, parameter 21):
+    # FAST = no PV, ECO = PV surplus + grid import, ECO+ = PV surplus only.
+    # Hidden by default: the charge mode select is the everyday control.
     ThorSelectDescription(
         key="solar_mode",
         config_key="G_SolarMode",
         values={"fast": 0, "eco": 1, "eco_plus": 2},
+        entity_registry_enabled_default=False,
     ),
-    # How a session is authorized: from the app, with an RFID card, or on plug-in.
+    # How a session is authorized (manual, parameter 26).
     ThorSelectDescription(
         key="authorization_mode",
         config_key="G_ChargerMode",
@@ -44,13 +56,44 @@ async def async_setup_entry(
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """One set of selects per charger found at setup."""
+    """Per charger: the charge mode select plus one select per enumerated setting."""
     coordinator = entry.runtime_data
-    async_add_entities(
-        ThorSelect(coordinator, sn, description)
-        for sn in coordinator.data
-        for description in SELECTS
-    )
+    entities: list[SelectEntity] = []
+    for sn in coordinator.data:
+        entities.append(ThorChargeModeSelect(coordinator, sn))
+        entities.extend(
+            ThorSelect(coordinator, sn, description) for description in SELECTS
+        )
+    async_add_entities(entities)
+
+
+class ThorChargeModeSelect(ThorEntity, SelectEntity):
+    """Fast / PV Linkage / Off-peak, the charger's everyday working mode."""
+
+    _attr_options = list(CHARGE_MODES)
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "charge_mode")
+
+    @property
+    def current_option(self) -> str | None:
+        mode = self.charger.charge_mode.get("mode")
+        return next((opt for opt, m in CHARGE_MODES.items() if m == mode), None)
+
+    async def async_select_option(self, option: str) -> None:
+        try:
+            fields = charge_mode_fields(self.charger, CHARGE_MODES[option])
+        except ValueError as err:
+            raise HomeAssistantError(
+                "Off-peak needs tariff time slots: set them in the Growatt app first"
+            ) from err
+        try:
+            await self.coordinator.api.async_set_charge_mode(self._sn, CONNECTOR_ID, fields)
+        except GrowattThorError as err:
+            raise HomeAssistantError(f"Could not set charge mode: {err}") from err
+        self.charger.charge_mode.update(fields)
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
 
 class ThorSelect(ThorEntity, SelectEntity):
