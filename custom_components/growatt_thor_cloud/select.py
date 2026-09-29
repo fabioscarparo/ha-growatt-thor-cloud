@@ -9,12 +9,14 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .api import GrowattThorError
 from .charge_mode import MODE_FAST, MODE_OFF_PEAK, MODE_PV_LINKAGE, charge_mode_fields
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity
+from .schedule import async_update_plan, effective_plan, ha_errors
 
 # HA option -> /ocpp/chargeMode "mode" value.
 CHARGE_MODES = {
@@ -51,18 +53,49 @@ SELECTS: tuple[ThorSelectDescription, ...] = (
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class ThorPlanSelectDescription(SelectEntityDescription):
+    """A choice staged in HA for the next scheduled start or for Boost."""
+
+    plan_field: str
+    boost: bool = False  # Resent at once when changed while Boost runs.
+
+
+PLAN_SELECTS: tuple[ThorPlanSelectDescription, ...] = (
+    ThorPlanSelectDescription(
+        key="charge_limit",
+        plan_field="limit",
+        options=["none", "cost", "energy", "duration"],
+    ),
+    ThorPlanSelectDescription(
+        key="start_mode",
+        plan_field="start",
+        options=["now", "at_time", "every_day"],
+    ),
+    ThorPlanSelectDescription(
+        key="boost_type",
+        plan_field="boost_type",
+        options=["manual", "smart"],
+        boost=True,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Per charger: the charge mode select plus one select per enumerated setting."""
+    """Per charger: charge mode, enumerated settings and staged plan choices."""
     coordinator = entry.runtime_data
     entities: list[SelectEntity] = []
     for sn in coordinator.data:
         entities.append(ThorChargeModeSelect(coordinator, sn))
         entities.extend(
             ThorSelect(coordinator, sn, description) for description in SELECTS
+        )
+        entities.extend(
+            ThorPlanSelect(coordinator, sn, description) for description in PLAN_SELECTS
         )
     async_add_entities(entities)
 
@@ -93,7 +126,7 @@ class ThorChargeModeSelect(ThorEntity, SelectEntity):
             raise HomeAssistantError(f"Could not set charge mode: {err}") from err
         self.charger.charge_mode.update(fields)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh_after_write()
 
 
 class ThorSelect(ThorEntity, SelectEntity):
@@ -129,4 +162,39 @@ class ThorSelect(ThorEntity, SelectEntity):
             raise HomeAssistantError(f"Could not set {key}: {err}") from err
         self.charger.config[key] = value
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh_after_write()
+
+
+class ThorPlanSelect(ThorEntity, SelectEntity, RestoreEntity):
+    """Select for a staged plan value; the choice survives restarts."""
+
+    entity_description: ThorPlanSelectDescription
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator, sn: str, description: ThorPlanSelectDescription
+    ) -> None:
+        super().__init__(coordinator, sn, description.key)
+        self.entity_description = description
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last and last.state in self.options:
+            setattr(self.coordinator.plan(self._sn), self.entity_description.plan_field, last.state)
+
+    @property
+    def current_option(self) -> str | None:
+        return getattr(
+            effective_plan(self.coordinator, self._sn), self.entity_description.plan_field
+        )
+
+    async def async_select_option(self, option: str) -> None:
+        with ha_errors("Could not update Boost"):
+            await async_update_plan(
+                self.coordinator,
+                self._sn,
+                self.entity_description.plan_field,
+                option,
+                self.entity_description.boost,
+            )

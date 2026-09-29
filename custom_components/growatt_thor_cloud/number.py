@@ -11,8 +11,15 @@ from homeassistant.components.number import (
     NumberEntity,
     NumberEntityDescription,
     NumberMode,
+    RestoreNumber,
 )
-from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfPower
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -22,6 +29,7 @@ from .charge_mode import MODE_PV_LINKAGE, charge_mode_fields, format_kw
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity, to_float
+from .schedule import async_update_plan, effective_plan, ha_errors
 
 # Upper bound for power settings when the charger does not report its rating.
 DEFAULT_MAX_POWER_KW = 22.0
@@ -65,17 +73,73 @@ NUMBERS: tuple[ThorNumberDescription, ...] = (
 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class ThorPlanNumberDescription(NumberEntityDescription):
+    """A value staged in HA for the next scheduled start or for Boost."""
+
+    plan_field: str
+    currency: bool = False  # Unit is the charger currency.
+    boost: bool = False  # Resent at once when changed while Boost runs.
+
+
+PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
+    ThorPlanNumberDescription(
+        key="limit_cost",
+        plan_field="limit_cost",
+        native_min_value=0.5,
+        native_max_value=500,
+        native_step=0.5,
+        mode=NumberMode.BOX,
+        currency=True,
+    ),
+    ThorPlanNumberDescription(
+        key="limit_energy",
+        plan_field="limit_energy",
+        device_class=NumberDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        native_min_value=0.5,
+        native_max_value=200,
+        native_step=0.5,
+        mode=NumberMode.BOX,
+    ),
+    ThorPlanNumberDescription(
+        key="limit_duration",
+        plan_field="limit_duration",
+        device_class=NumberDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        native_min_value=1,
+        native_max_value=24 * 60 - 1,  # The app's picker stops at 23 h 59 min.
+        native_step=1,
+        mode=NumberMode.BOX,
+    ),
+    ThorPlanNumberDescription(
+        key="boost_energy",
+        plan_field="boost_energy",
+        device_class=NumberDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        native_min_value=0.5,
+        native_max_value=200,
+        native_step=0.5,
+        mode=NumberMode.BOX,
+        boost=True,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Per charger: one number per numeric setting plus the PV Linkage grid import."""
+    """Per charger: numeric settings, the PV Linkage grid import and staged plan values."""
     coordinator = entry.runtime_data
     entities: list[NumberEntity] = []
     for sn in coordinator.data:
         entities.extend(ThorNumber(coordinator, sn, description) for description in NUMBERS)
         entities.append(ThorImportGridNumber(coordinator, sn))
+        entities.extend(
+            ThorPlanNumber(coordinator, sn, description) for description in PLAN_NUMBERS
+        )
     async_add_entities(entities)
 
 
@@ -104,7 +168,7 @@ class ThorNumber(ThorEntity, NumberEntity):
             raise HomeAssistantError(f"Could not set {key}: {err}") from err
         self.charger.config[key] = api_value
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh_after_write()
 
 
 class ThorImportGridNumber(ThorEntity, NumberEntity):
@@ -143,4 +207,44 @@ class ThorImportGridNumber(ThorEntity, NumberEntity):
             raise HomeAssistantError(f"Could not set grid import: {err}") from err
         self.charger.charge_mode.update(fields)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh_after_write()
+
+
+class ThorPlanNumber(ThorEntity, RestoreNumber):
+    """Number for a staged plan value; the value survives restarts."""
+
+    entity_description: ThorPlanNumberDescription
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, sn: str, description: ThorPlanNumberDescription) -> None:
+        super().__init__(coordinator, sn, description.key)
+        self.entity_description = description
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last and last.native_value is not None:
+            field = self.entity_description.plan_field
+            plan = self.coordinator.plan(self._sn)
+            setattr(plan, field, type(getattr(plan, field))(last.native_value))
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        if self.entity_description.currency:
+            return self.charger.config.get("unit") or self.charger.summary.get("unit")
+        return super().native_unit_of_measurement
+
+    @property
+    def native_value(self) -> float:
+        return getattr(
+            effective_plan(self.coordinator, self._sn), self.entity_description.plan_field
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        field = self.entity_description.plan_field
+        # Keep the field's type: durations are whole minutes.
+        value = type(getattr(self.coordinator.plan(self._sn), field))(value)
+        with ha_errors("Could not update Boost"):
+            await async_update_plan(
+                self.coordinator, self._sn, field, value, self.entity_description.boost
+            )

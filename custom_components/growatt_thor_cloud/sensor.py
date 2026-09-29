@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -26,6 +28,7 @@ from homeassistant.util import dt as dt_util
 
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
+from .schedule import LIMIT_TYPES, next_reservation
 
 # OCPP StatusNotification values -> HA enum states (snake_case for translations).
 CONNECTOR_STATUS = {
@@ -39,6 +42,9 @@ CONNECTOR_STATUS = {
     "Unavailable": "unavailable",
     "Faulted": "faulted",
 }
+
+# G_ExternalSamplingCurWring -> how the charger measures the grid.
+SAMPLING_DEVICES = {"0": "ct2000", "1": "meter", "2": "ct3000"}
 
 
 def _in_slot(slot: str, now: str) -> bool:
@@ -74,11 +80,34 @@ def _power(charger: ThorCharger) -> float | None:
     return round(current * voltage, 1)
 
 
+def _session_limit(charger: ThorCharger) -> str:
+    """Limit of the current session: none / cost / energy / duration."""
+    return LIMIT_TYPES.get(str(charger.connector.get("cKey") or ""), "none")
+
+
+def _session_limit_attrs(charger: ThorCharger) -> dict[str, Any]:
+    if _session_limit(charger) == "none":
+        return {}
+    return {"value": to_float(charger.connector.get("cValue"))}
+
+
+def _next_reservation_attrs(charger: ThorCharger) -> dict[str, Any]:
+    if (upcoming := next_reservation(charger)) is None:
+        return {}
+    reservation = upcoming[1]
+    return {
+        "every_day": str(reservation.get("loopType")) == "0",
+        "limit": LIMIT_TYPES.get(str(reservation.get("cKey") or ""), "none"),
+        "limit_value": to_float(reservation.get("cValue")),
+    }
+
+
 @dataclass(frozen=True, kw_only=True)
 class ThorSensorDescription(SensorEntityDescription):
-    """Sensor description with a value getter over the charger snapshot."""
+    """Sensor description with value and attribute getters over the charger snapshot."""
 
-    value_fn: Callable[[ThorCharger], StateType]
+    value_fn: Callable[[ThorCharger], StateType | datetime]
+    attrs_fn: Callable[[ThorCharger], dict[str, Any]] | None = None
     # When set, the unit is the charger currency (e.g. "EUR") plus this suffix.
     currency_unit: str | None = None
 
@@ -140,6 +169,19 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         value_fn=_tariff,
     ),
     ThorSensorDescription(
+        key="session_limit",
+        device_class=SensorDeviceClass.ENUM,
+        options=["none", *LIMIT_TYPES.values()],
+        value_fn=_session_limit,
+        attrs_fn=_session_limit_attrs,
+    ),
+    ThorSensorDescription(
+        key="next_reservation",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: upcoming[0] if (upcoming := next_reservation(c)) else None,
+        attrs_fn=_next_reservation_attrs,
+    ),
+    ThorSensorDescription(
         key="error_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.connector.get("errorCode") or None,
@@ -148,6 +190,20 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         key="vendor_error_code",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.connector.get("vendorErrorCode") or None,
+    ),
+    # Grid measurement used by PV Linkage and load balancing: set up with the
+    # installation, so read-only here.
+    ThorSensorDescription(
+        key="sampling_device",
+        device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        options=list(SAMPLING_DEVICES.values()),
+        value_fn=lambda c: SAMPLING_DEVICES.get(str(c.config.get("G_ExternalSamplingCurWring"))),
+    ),
+    ThorSensorDescription(
+        key="meter_type",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.config.get("G_PowerMeterType") or None,
     ),
     ThorSensorDescription(
         key="ip_address",
@@ -182,8 +238,14 @@ class ThorSensor(ThorEntity, SensorEntity):
         self.entity_description = description
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> StateType | datetime:
         return self.entity_description.value_fn(self.charger)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.attrs_fn is None:
+            return None
+        return self.entity_description.attrs_fn(self.charger)
 
     @property
     def native_unit_of_measurement(self) -> str | None:

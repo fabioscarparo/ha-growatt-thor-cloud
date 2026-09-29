@@ -54,6 +54,11 @@ Field meanings:
 - `chargeMode.mode`: `fast`, `offPeak`, `pvLinkage`, as picked on the Growatt app charger screen.
   Other fields: `boost` (0/1), `boostType` (`manual`/`smart`), `config` (smart boost
   `contime=HH:MM&energy=<kWh>`), `importGrid` (kW), `G_PeriodTime` (off-peak slots).
+- Boost: `boost` 1/0, `boostType` `manual` (PV Linkage only) with `config` =
+  `"time1=HH:MM-HH:MM"` (full power in that window), or `smart` with `config` =
+  `"contime=HH:MM&energy=<kWh>"` (energy guaranteed by that time).
+- Grid sampling: `G_ExternalSamplingCurWring` 0 = CT 2000:1, 1 = meter, 2 = CT 3000:1;
+  `G_PowerMeterType` = meter model (e.g. `Eastron SDM230`).
 - PV Linkage needs a CT or meter. Minimum charging power: 1.4 kW single-phase, 4.1 kW three-phase.
   `importGrid` 0 = surplus only, charging pauses below the minimum; P kW = grid tops up to P.
 
@@ -68,6 +73,20 @@ Finishing, Reserved, Unavailable, Faulted`.
 - Settings: `POST /ocpp/api/config` `{"chargeId","userId","lan","<key>": value}` with keys like
   `G_MaxCurrent`, `G_ChargerMode`, `G_SolarMode`, `G_SolarLimitPower`, `G_ExternalLimitPower`,
   `G_ExternalLimitPowerEnable`, `G_PeakValleyEnable`, `G_AutoChargeTime`, `G_LCDCloseEnable`.
+- Start with a limit: add `"cKey"` + `"cValue"` to `remoteStartTransaction`. Keys:
+  `G_SetAmount` (cost, currency), `G_SetEnergy` (kWh), `G_SetTime` (duration in minutes; the app
+  picks it as hours and minutes). `G_SetTime` also needs `"loopType": -1, "loopValue": "h:m"`
+  (not zero-padded, e.g. `"1:30"`).
+- Scheduled start: `POST /ocpp/cmd/` `{"action":"ReserveNow","expiryDate","connectorId","chargeId",
+  "loopType","loopValue","userId","lan"}` plus optional `cKey`/`cValue`.
+  `expiryDate` = `"YYYY-MM-DDTHH:MM:00.000Z"` in local time (the `Z` is literal, not UTC),
+  `loopType` 0 = every day, -1 = once, `loopValue` = `"HH:MM"`.
+- Reservations are listed in `charge/info` as a top-level `ReserveNow` array (next to `data`):
+  `reservationId`, `expiryDate`, `loopType`, `loopValue`, `cKey`, `cValue`, `connectorId`.
+  The running session limit is `data.cKey` / `data.cValue`.
+- Cancel a reservation: `POST /ocpp/api/updateReserve` with the reservation fields (`cKey`,
+  `cValue`, `connectorId`, `expiryDate`, `loopValue`, `loopType`, `reservationId`), `"sn"` and
+  `"ctype": "2"`.
 - Charge mode: `POST /ocpp/chargeMode` `{"cmd":"update","chargeId","connectorId","userId","lan","mode",...}`
   with the whole mode object:
   - `fast`: nothing else.

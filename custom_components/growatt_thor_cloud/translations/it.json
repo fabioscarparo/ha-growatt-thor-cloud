@@ -45,6 +45,18 @@
       },
       "import_grid_power": {
         "name": "Potenza importata da rete"
+      },
+      "limit_cost": {
+        "name": "Limite costo"
+      },
+      "limit_energy": {
+        "name": "Limite energia"
+      },
+      "limit_duration": {
+        "name": "Limite durata"
+      },
+      "boost_energy": {
+        "name": "Energia Boost"
       }
     },
     "select": {
@@ -70,6 +82,30 @@
           "app": "APP/RFID",
           "rfid": "RFID",
           "plug_and_charge": "Plug & Charge"
+        }
+      },
+      "charge_limit": {
+        "name": "Limite ricarica",
+        "state": {
+          "none": "Nessuno",
+          "cost": "Costo",
+          "energy": "Energia",
+          "duration": "Durata"
+        }
+      },
+      "start_mode": {
+        "name": "Avvio",
+        "state": {
+          "now": "Subito",
+          "at_time": "All'orario",
+          "every_day": "Ogni giorno"
+        }
+      },
+      "boost_type": {
+        "name": "Tipo Boost",
+        "state": {
+          "manual": "Manuale",
+          "smart": "Smart"
         }
       }
     },
@@ -117,6 +153,29 @@
       },
       "ip_address": {
         "name": "Indirizzo IP"
+      },
+      "session_limit": {
+        "name": "Limite sessione",
+        "state": {
+          "none": "Nessuno",
+          "cost": "Costo",
+          "energy": "Energia",
+          "duration": "Durata"
+        }
+      },
+      "next_reservation": {
+        "name": "Prossima prenotazione"
+      },
+      "sampling_device": {
+        "name": "Dispositivo di campionamento",
+        "state": {
+          "ct2000": "CT 2000:1",
+          "meter": "Meter",
+          "ct3000": "CT 3000:1"
+        }
+      },
+      "meter_type": {
+        "name": "Tipo di meter"
       }
     },
     "switch": {
@@ -128,6 +187,130 @@
       },
       "lcd_display": {
         "name": "Display LCD"
+      },
+      "boost": {
+        "name": "Boost"
+      }
+    },
+    "time": {
+      "start_time": {
+        "name": "Orario di avvio"
+      },
+      "boost_from": {
+        "name": "Boost dalle"
+      },
+      "boost_to": {
+        "name": "Boost alle"
+      },
+      "boost_departure": {
+        "name": "Orario di partenza Boost"
+      }
+    },
+    "button": {
+      "start_plan": {
+        "name": "Avvia ricarica programmata"
+      },
+      "cancel_reservation": {
+        "name": "Annulla prenotazione"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Aggiornamento",
+        "description": "Ogni quanto leggere la colonnina dal cloud Growatt. Intervalli più lunghi inviano meno richieste e riducono il rischio di blocchi.",
+        "data": {
+          "scan_interval": "Intervallo di aggiornamento (secondi)"
+        }
+      }
+    }
+  },
+  "services": {
+    "start_charging": {
+      "name": "Avvia ricarica",
+      "description": "Avvia subito o a un orario, con un eventuale limite di costo, energia o durata.",
+      "fields": {
+        "device_id": {
+          "name": "Colonnina",
+          "description": "La colonnina THOR."
+        },
+        "limit": {
+          "name": "Limite",
+          "description": "Ferma la sessione a questo limite."
+        },
+        "value": {
+          "name": "Valore",
+          "description": "Valore del limite: valuta per il costo, kWh per l'energia, minuti per la durata."
+        },
+        "start_time": {
+          "name": "Orario di avvio",
+          "description": "Avvia a questo orario invece che subito."
+        },
+        "every_day": {
+          "name": "Ogni giorno",
+          "description": "Ripeti l'avvio ogni giorno all'orario indicato."
+        }
+      }
+    },
+    "cancel_reservation": {
+      "name": "Annulla prenotazione",
+      "description": "Annulla gli avvii programmati della colonnina.",
+      "fields": {
+        "device_id": {
+          "name": "Colonnina",
+          "description": "La colonnina THOR."
+        }
+      }
+    },
+    "set_boost": {
+      "name": "Imposta Boost",
+      "description": "Attiva o disattiva il Boost in modalità PV Linkage o Off-peak.",
+      "fields": {
+        "device_id": {
+          "name": "Colonnina",
+          "description": "La colonnina THOR."
+        },
+        "enabled": {
+          "name": "Attivo",
+          "description": "Attiva o disattiva il Boost."
+        },
+        "type": {
+          "name": "Tipo",
+          "description": "Manuale: massima potenza in una fascia oraria. Smart: garantisce un'energia entro un orario."
+        },
+        "from": {
+          "name": "Dalle",
+          "description": "Boost manuale: inizio della fascia."
+        },
+        "to": {
+          "name": "Alle",
+          "description": "Boost manuale: fine della fascia."
+        },
+        "departure": {
+          "name": "Orario di partenza",
+          "description": "Boost smart: energia disponibile entro questo orario."
+        },
+        "energy": {
+          "name": "Energia",
+          "description": "Boost smart: energia da garantire."
+        }
+      }
+    }
+  },
+  "selector": {
+    "limit": {
+      "options": {
+        "none": "Nessuno",
+        "cost": "Costo",
+        "energy": "Energia (kWh)",
+        "duration": "Durata (minuti)"
+      }
+    },
+    "boost_type": {
+      "options": {
+        "manual": "Manuale",
+        "smart": "Smart"
       }
     }
   }

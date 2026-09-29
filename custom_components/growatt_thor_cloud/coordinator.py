@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, time, timedelta
 import logging
 from typing import Any
 
@@ -10,9 +11,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import GrowattThorApi, GrowattThorApiError, GrowattThorAuthError
-from .const import CONNECTOR_ID, DOMAIN, SCAN_INTERVAL
+from .const import (
+    BACKOFF_INTERVALS,
+    CONF_SCAN_INTERVAL,
+    CONFIG_REFRESH_INTERVAL,
+    CONNECTOR_ID,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    STALE_DATA_GRACE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +36,8 @@ class ThorCharger:
     sn: str
     summary: dict[str, Any]  # /ocpp/api/list entry
     config: dict[str, Any] = field(default_factory=dict)  # /ocpp/api/configInfo
-    connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info
+    connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info "data"
+    reservations: list[dict[str, Any]] = field(default_factory=list)  # "ReserveNow"
     charge_mode: dict[str, Any] = field(default_factory=dict)  # /ocpp/chargeMode
 
     @property
@@ -43,40 +54,118 @@ class ThorCharger:
             return None
 
 
+@dataclass
+class ChargePlan:
+    """Values staged in HA for the next scheduled start and for Boost.
+
+    The charger only learns them when a start is requested or Boost is turned
+    on; until then they live here (and in the entities' restored state).
+    """
+
+    limit: str = "none"  # none / cost / energy / duration
+    limit_cost: float = 5.0  # currency
+    limit_energy: float = 10.0  # kWh
+    limit_duration: int = 120  # minutes
+    start: str = "now"  # now / at_time / every_day
+    start_time: time = time(22, 0)
+    boost_type: str = "manual"  # manual / smart
+    boost_from: time = time(12, 0)  # manual: full power in this window
+    boost_to: time = time(14, 0)
+    boost_departure: time = time(7, 0)  # smart: energy guaranteed by this time
+    boost_energy: float = 20.0  # smart: kWh
+
+
 class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
-    """Polls every charger on the account; data is keyed by serial number."""
+    """Polls every charger on the account; data is keyed by serial number.
+
+    Growatt rate-limits its cloud, so polling is gentle: settings are read
+    every few minutes, failures slow polling down, and the last data is kept
+    for a while before entities turn unavailable.
+    """
 
     config_entry: GrowattThorConfigEntry
 
     def __init__(
         self, hass: HomeAssistant, entry: GrowattThorConfigEntry, api: GrowattThorApi
     ) -> None:
+        interval = timedelta(
+            seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
         super().__init__(
             hass,
             _LOGGER,
             config_entry=entry,
             name=DOMAIN,
-            update_interval=SCAN_INTERVAL,
+            update_interval=interval,
         )
         self.api = api
+        self.plans: dict[str, ChargePlan] = {}
+        self._base_interval = interval
+        self._failures = 0
+        self._last_success: datetime | None = None
+        self._config_fetched_at: datetime | None = None
+        self._config_stale = True
+
+    def plan(self, sn: str) -> ChargePlan:
+        """Staged schedule and Boost values for a charger."""
+        return self.plans.setdefault(sn, ChargePlan())
+
+    async def async_refresh_after_write(self) -> None:
+        """Refresh soon, re-reading settings too, to confirm a change made from HA."""
+        self._config_stale = True
+        await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, ThorCharger]:
-        # Sequential on purpose: four small requests per charger per minute keep the
-        # load on Growatt's cloud low.
         try:
-            chargers: dict[str, ThorCharger] = {}
-            for summary in await self.api.async_get_chargers():
-                sn = summary["chargeId"]
-                chargers[sn] = ThorCharger(
-                    sn=sn,
-                    summary=summary,
-                    config=await self.api.async_get_config(sn),
-                    connector=await self.api.async_get_connector(sn, CONNECTOR_ID),
-                    charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
-                )
+            chargers = await self._async_fetch()
         except GrowattThorAuthError as err:
-            # Starts the reauth flow instead of retrying with bad credentials.
+            # Starts the reauth flow and stops polling with bad credentials.
             raise ConfigEntryAuthFailed(str(err)) from err
         except GrowattThorApiError as err:
-            raise UpdateFailed(str(err)) from err
+            self._failures += 1
+            step = BACKOFF_INTERVALS[min(self._failures, len(BACKOFF_INTERVALS)) - 1]
+            self.update_interval = max(self._base_interval, timedelta(seconds=step))
+            retry = int(self.update_interval.total_seconds())
+            if (
+                self.data
+                and self._last_success
+                and dt_util.utcnow() - self._last_success < STALE_DATA_GRACE
+            ):
+                # Brief outage or rate limit: keep entities on the last values.
+                _LOGGER.warning("Growatt cloud error, keeping last data, retry in %s s: %s", retry, err)
+                return self.data
+            raise UpdateFailed(f"{err} (retry in {retry} s)") from err
+        self._failures = 0
+        self.update_interval = self._base_interval
+        self._last_success = dt_util.utcnow()
+        return chargers
+
+    async def _async_fetch(self) -> dict[str, ThorCharger]:
+        # Sequential on purpose, to keep the load on Growatt's cloud low.
+        now = dt_util.utcnow()
+        refresh_config = (
+            self._config_stale
+            or self._config_fetched_at is None
+            or now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL
+        )
+        chargers: dict[str, ThorCharger] = {}
+        for summary in await self.api.async_get_chargers():
+            sn = summary["chargeId"]
+            previous = (self.data or {}).get(sn)
+            if refresh_config or previous is None:
+                config = await self.api.async_get_config(sn)
+            else:
+                config = previous.config
+            connector = await self.api.async_get_connector(sn, CONNECTOR_ID)
+            chargers[sn] = ThorCharger(
+                sn=sn,
+                summary=summary,
+                config=config,
+                connector=connector["data"],
+                reservations=connector["reservations"],
+                charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
+            )
+        if refresh_config:
+            self._config_fetched_at = now
+            self._config_stale = False
         return chargers

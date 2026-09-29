@@ -45,6 +45,18 @@
       },
       "import_grid_power": {
         "name": "Grid import power"
+      },
+      "limit_cost": {
+        "name": "Cost limit"
+      },
+      "limit_energy": {
+        "name": "Energy limit"
+      },
+      "limit_duration": {
+        "name": "Duration limit"
+      },
+      "boost_energy": {
+        "name": "Boost energy"
       }
     },
     "select": {
@@ -70,6 +82,30 @@
           "app": "APP/RFID",
           "rfid": "RFID",
           "plug_and_charge": "Plug & Charge"
+        }
+      },
+      "charge_limit": {
+        "name": "Charge limit",
+        "state": {
+          "none": "None",
+          "cost": "Cost",
+          "energy": "Energy",
+          "duration": "Duration"
+        }
+      },
+      "start_mode": {
+        "name": "Start",
+        "state": {
+          "now": "Now",
+          "at_time": "At time",
+          "every_day": "Every day"
+        }
+      },
+      "boost_type": {
+        "name": "Boost type",
+        "state": {
+          "manual": "Manual",
+          "smart": "Smart"
         }
       }
     },
@@ -117,6 +153,29 @@
       },
       "ip_address": {
         "name": "IP address"
+      },
+      "session_limit": {
+        "name": "Session limit",
+        "state": {
+          "none": "None",
+          "cost": "Cost",
+          "energy": "Energy",
+          "duration": "Duration"
+        }
+      },
+      "next_reservation": {
+        "name": "Next reservation"
+      },
+      "sampling_device": {
+        "name": "Grid sampling device",
+        "state": {
+          "ct2000": "CT 2000:1",
+          "meter": "Meter",
+          "ct3000": "CT 3000:1"
+        }
+      },
+      "meter_type": {
+        "name": "Meter type"
       }
     },
     "switch": {
@@ -128,6 +187,130 @@
       },
       "lcd_display": {
         "name": "LCD display"
+      },
+      "boost": {
+        "name": "Boost"
+      }
+    },
+    "time": {
+      "start_time": {
+        "name": "Start time"
+      },
+      "boost_from": {
+        "name": "Boost from"
+      },
+      "boost_to": {
+        "name": "Boost to"
+      },
+      "boost_departure": {
+        "name": "Boost departure time"
+      }
+    },
+    "button": {
+      "start_plan": {
+        "name": "Start scheduled charge"
+      },
+      "cancel_reservation": {
+        "name": "Cancel reservation"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Polling",
+        "description": "How often to read the charger from Growatt's cloud. Longer intervals send fewer requests and make rate limiting less likely.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "services": {
+    "start_charging": {
+      "name": "Start charging",
+      "description": "Start now or at a time, optionally stopping at a cost, energy or duration limit.",
+      "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The THOR charger."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Stop the session at this limit."
+        },
+        "value": {
+          "name": "Value",
+          "description": "Limit value: currency for cost, kWh for energy, minutes for duration."
+        },
+        "start_time": {
+          "name": "Start time",
+          "description": "Start at this time instead of now."
+        },
+        "every_day": {
+          "name": "Every day",
+          "description": "Repeat the start every day at the start time."
+        }
+      }
+    },
+    "cancel_reservation": {
+      "name": "Cancel reservation",
+      "description": "Cancel the scheduled starts of the charger.",
+      "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The THOR charger."
+        }
+      }
+    },
+    "set_boost": {
+      "name": "Set Boost",
+      "description": "Turn Boost on or off in PV Linkage or Off-peak mode.",
+      "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The THOR charger."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Turn Boost on or off."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Manual: full power in a time window. Smart: guarantee an energy by a time."
+        },
+        "from": {
+          "name": "From",
+          "description": "Manual Boost: window start."
+        },
+        "to": {
+          "name": "To",
+          "description": "Manual Boost: window end."
+        },
+        "departure": {
+          "name": "Departure time",
+          "description": "Smart Boost: have the energy by this time."
+        },
+        "energy": {
+          "name": "Energy",
+          "description": "Smart Boost: energy to guarantee."
+        }
+      }
+    }
+  },
+  "selector": {
+    "limit": {
+      "options": {
+        "none": "None",
+        "cost": "Cost",
+        "energy": "Energy (kWh)",
+        "duration": "Duration (minutes)"
+      }
+    },
+    "boost_type": {
+      "options": {
+        "manual": "Manual",
+        "smart": "Smart"
       }
     }
   }

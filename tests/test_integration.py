@@ -6,56 +6,17 @@ import pytest
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growatt_thor_cloud.api import GrowattThorAuthError, hash_password
 from custom_components.growatt_thor_cloud.const import CONF_PASSWORD_HASH, DOMAIN
 from custom_components.growatt_thor_cloud.sensor import _in_slot
 
+from .common import call as _call, enable as _enable, setup_integration, state as _state
 from .conftest import CHARGE_MODE, CONFIG, SN
-
-
-async def _setup(hass: HomeAssistant) -> MockConfigEntry:
-    """Add a config entry and set it up against the mocked API."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        unique_id="user",
-        data={CONF_USERNAME: "user", CONF_PASSWORD_HASH: "hash"},
-    )
-    entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
-    return entry
-
-
-def _entity_id(hass: HomeAssistant, domain: str, key: str) -> str:
-    """Entity id by unique id, so tests do not depend on translated names."""
-    entity_id = er.async_get(hass).async_get_entity_id(domain, DOMAIN, f"{SN}_{key}")
-    assert entity_id, f"{domain} {key} not registered"
-    return entity_id
-
-
-def _state(hass: HomeAssistant, domain: str, key: str) -> State | None:
-    return hass.states.get(_entity_id(hass, domain, key))
-
-
-async def _call(hass: HomeAssistant, domain: str, service: str, key: str, **data) -> None:
-    await hass.services.async_call(
-        domain, service, {"entity_id": _entity_id(hass, domain, key), **data}, blocking=True
-    )
-
-
-async def _enable(hass: HomeAssistant, entry: MockConfigEntry, *entities: tuple[str, str]) -> None:
-    """Enable entities that are disabled by default, then reload to create them."""
-    registry = er.async_get(hass)
-    for domain, key in entities:
-        registry.async_update_entity(_entity_id(hass, domain, key), disabled_by=None)
-    await hass.config_entries.async_reload(entry.entry_id)
-    await hass.async_block_till_done()
 
 
 async def test_user_flow_stores_only_hash(hass: HomeAssistant, mock_api) -> None:
@@ -94,7 +55,7 @@ async def test_user_flow_errors(hass: HomeAssistant, mock_api) -> None:
 
 async def test_entities(hass: HomeAssistant, mock_api) -> None:
     """API payloads map to the expected entity states and units."""
-    await _setup(hass)
+    await setup_integration(hass)
 
     def state(domain: str, key: str) -> str:
         return _state(hass, domain, key).state
@@ -126,7 +87,7 @@ async def test_entities(hass: HomeAssistant, mock_api) -> None:
 
 async def test_controls(hass: HomeAssistant, mock_api) -> None:
     """Every control sends the right command in the right wire format."""
-    await _setup(hass)
+    await setup_integration(hass)
 
     await _call(hass, "switch", "turn_off", "charging")
     mock_api.async_stop_charging.assert_awaited_once_with(SN, 1, "1234")
@@ -146,7 +107,7 @@ async def test_controls(hass: HomeAssistant, mock_api) -> None:
 
 async def test_hidden_settings(hass: HomeAssistant, mock_api) -> None:
     """Low-level ECO settings work once the user enables them."""
-    entry = await _setup(hass)
+    entry = await setup_integration(hass)
     await _enable(hass, entry, ("select", "solar_mode"), ("number", "solar_limit_power"))
     assert _state(hass, "select", "solar_mode").state == "eco_plus"
     assert _state(hass, "number", "solar_limit_power").state == "1.38"
@@ -157,14 +118,14 @@ async def test_hidden_settings(hass: HomeAssistant, mock_api) -> None:
 
 async def test_charge_mode_fast(hass: HomeAssistant, mock_api) -> None:
     """Fast needs no other field."""
-    await _setup(hass)
+    await setup_integration(hass)
     await _call(hass, "select", "select_option", "charge_mode", option="fast")
     mock_api.async_set_charge_mode.assert_awaited_once_with(SN, 1, {"mode": "fast"})
 
 
 async def test_import_grid_power(hass: HomeAssistant, mock_api) -> None:
     """Grid import resends the PV Linkage object with the meter setup from the config."""
-    await _setup(hass)
+    await setup_integration(hass)
     await _call(hass, "number", "set_value", "import_grid_power", value=1.4)
     mock_api.async_set_charge_mode.assert_awaited_once_with(
         SN,
@@ -186,7 +147,7 @@ async def test_import_grid_power_unavailable_outside_pv_linkage(
 ) -> None:
     """The grid import only applies to PV Linkage."""
     mock_api.async_get_charge_mode.side_effect = lambda sn, cid: {**CHARGE_MODE, "mode": "fast"}
-    await _setup(hass)
+    await setup_integration(hass)
     assert _state(hass, "number", "import_grid_power").state == "unavailable"
 
 
@@ -198,7 +159,7 @@ async def test_charge_mode_off_peak(hass: HomeAssistant, mock_api) -> None:
         {"price": "0.15", "time": "00:00-08:00"},
     ]
     mock_api.async_get_config.side_effect = lambda sn: {**CONFIG, "priceConf": tariffs}
-    await _setup(hass)
+    await setup_integration(hass)
     await _call(hass, "select", "select_option", "charge_mode", option="off_peak")
     fields = mock_api.async_set_charge_mode.await_args.args[2]
     assert fields["mode"] == "offPeak"
@@ -212,7 +173,7 @@ async def test_charge_mode_off_peak_keeps_user_slots(hass: HomeAssistant, mock_a
         **CHARGE_MODE,
         "G_PeriodTime": "time1=01:00-06:00",
     }
-    await _setup(hass)
+    await setup_integration(hass)
     await _call(hass, "select", "select_option", "charge_mode", option="off_peak")
     fields = mock_api.async_set_charge_mode.await_args.args[2]
     assert fields["G_PeriodTime"] == "time1=01:00-06:00"
@@ -221,7 +182,7 @@ async def test_charge_mode_off_peak_keeps_user_slots(hass: HomeAssistant, mock_a
 async def test_charge_mode_off_peak_without_tariffs(hass: HomeAssistant, mock_api) -> None:
     """Without tariffs there is nothing to schedule: error, no command sent."""
     mock_api.async_get_config.side_effect = lambda sn: {**CONFIG, "priceConf": []}
-    await _setup(hass)
+    await setup_integration(hass)
     with pytest.raises(HomeAssistantError):
         await _call(hass, "select", "select_option", "charge_mode", option="off_peak")
     mock_api.async_set_charge_mode.assert_not_awaited()

@@ -1,0 +1,81 @@
+start_charging:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: growatt_thor_cloud
+    limit:
+      default: none
+      selector:
+        select:
+          translation_key: limit
+          options:
+            - none
+            - cost
+            - energy
+            - duration
+    value:
+      example: 20
+      selector:
+        number:
+          min: 0.5
+          max: 1439
+          step: 0.5
+          mode: box
+    start_time:
+      example: "23:00"
+      selector:
+        time:
+    every_day:
+      default: false
+      selector:
+        boolean:
+
+cancel_reservation:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: growatt_thor_cloud
+
+set_boost:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: growatt_thor_cloud
+    enabled:
+      required: true
+      selector:
+        boolean:
+    type:
+      selector:
+        select:
+          translation_key: boost_type
+          options:
+            - manual
+            - smart
+    from:
+      example: "12:00"
+      selector:
+        time:
+    to:
+      example: "14:00"
+      selector:
+        time:
+    departure:
+      example: "07:00"
+      selector:
+        time:
+    energy:
+      example: 20
+      selector:
+        number:
+          min: 0.5
+          max: 200
+          step: 0.5
+          unit_of_measurement: kWh
+          mode: box

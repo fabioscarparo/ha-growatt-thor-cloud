@@ -6,19 +6,25 @@ Every call is a JSON POST carrying `userId` and `lan`; the server answers
 
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime
 import hashlib
 import json
+import time
 from typing import Any
 
 import aiohttp
 
-from .const import DEFAULT_BASE_URL, DEFAULT_USER_PREFIX
+from .const import DEFAULT_BASE_URL, DEFAULT_USER_PREFIX, LIMIT_DURATION
 
 LAN = 1  # Response language: 1 = English.
 USER_AGENT = "MyApp/8.5.6.0 ShinePhone"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 CODE_OK = 0
 CODE_NOT_LOGGED_IN = 501
+# After a failed login, wait before trying again: repeated logins are what gets
+# Growatt accounts rate limited or locked.
+LOGIN_COOLDOWN = 300  # s
 
 # Config fields that hold credentials; never keep them in memory or state.
 SECRET_KEYS = frozenset(
@@ -35,7 +41,7 @@ class GrowattThorAuthError(GrowattThorError):
 
 
 class GrowattThorApiError(GrowattThorError):
-    """The API could not be reached or returned an error."""
+    """The API could not be reached or returned an error; worth retrying later."""
 
 
 def hash_password(password: str) -> str:
@@ -63,22 +69,15 @@ class GrowattThorApi:
         self._password_hash = password_hash
         self._base_url = base_url.rstrip("/")
         self._token: str | None = None
+        # One login at a time: concurrent calls that all see an expired token
+        # must not each log in.
+        self._login_lock = asyncio.Lock()
+        self._login_retry_at = 0.0  # time.monotonic() before which login is paused
 
     async def login(self) -> None:
         """Get a fresh token; raises GrowattThorAuthError if credentials are rejected."""
-        data = await self._request(
-            "/ocpp/user",
-            {
-                "cmd": "shineLogin",
-                "userId": self._user_id,
-                "password": self._password_hash,
-                "lan": LAN,
-            },
-        )
-        token = data.get("token")
-        if data.get("code") != CODE_OK or not token:
-            raise GrowattThorAuthError(str(data.get("data") or "Login failed"))
-        self._token = token
+        async with self._login_lock:
+            await self._login()
 
     # --- Read -------------------------------------------------------------
 
@@ -92,9 +91,14 @@ class GrowattThorApi:
         return {k: v for k, v in data.items() if k not in SECRET_KEYS}
 
     async def async_get_connector(self, sn: str, connector_id: int) -> dict[str, Any]:
-        """Live connector data: status, V/A, session energy, cost and transaction id."""
+        """Live connector data and its reservations.
+
+        Returns {"data": {status, V/A, session energy, cost, transactionId...},
+        "reservations": [ReserveNow entries]}.
+        """
         payload = {"sn": sn, "connectorId": connector_id}
-        return (await self._call("/ocpp/charge/info", payload)).get("data") or {}
+        resp = await self._call("/ocpp/charge/info", payload)
+        return {"data": resp.get("data") or {}, "reservations": resp.get("ReserveNow") or []}
 
     async def async_get_charge_mode(self, sn: str, connector_id: int) -> dict[str, Any]:
         """Active charge mode (fast / offPeak / pvLinkage) and its parameters."""
@@ -116,16 +120,69 @@ class GrowattThorApi:
             {"cmd": "update", "chargeId": sn, "connectorId": str(connector_id), **fields},
         )
 
-    async def async_start_charging(self, sn: str, connector_id: int) -> None:
-        """Send an OCPP RemoteStartTransaction through the cloud."""
-        await self._call(
-            "/ocpp/cmd/",
-            {
-                "action": "remoteStartTransaction",
-                "chargeId": sn,
-                "connectorId": str(connector_id),
-            },
-        )
+    async def async_start_charging(
+        self,
+        sn: str,
+        connector_id: int,
+        limit_key: str | None = None,
+        limit_value: str | None = None,
+    ) -> None:
+        """Send an OCPP RemoteStartTransaction, optionally stopping at a limit.
+
+        `limit_key` is G_SetAmount (cost), G_SetEnergy (kWh) or G_SetTime (minutes).
+        """
+        payload: dict[str, Any] = {
+            "action": "remoteStartTransaction",
+            "chargeId": sn,
+            "connectorId": str(connector_id),
+        }
+        if limit_key:
+            payload |= {"cKey": limit_key, "cValue": limit_value}
+            if limit_key == LIMIT_DURATION:
+                # A duration start also carries it as "h:m" (not zero-padded).
+                minutes = int(float(limit_value or 0))
+                payload |= {"loopType": -1, "loopValue": f"{minutes // 60}:{minutes % 60}"}
+        await self._call("/ocpp/cmd/", payload)
+
+    async def async_reserve_charging(
+        self,
+        sn: str,
+        connector_id: int,
+        start: datetime,
+        every_day: bool,
+        limit_key: str | None = None,
+        limit_value: str | None = None,
+    ) -> None:
+        """Schedule a start at `start` (charger local time), once or every day."""
+        payload: dict[str, Any] = {
+            "action": "ReserveNow",
+            # Local wall-clock time with a literal "Z": that is the format the
+            # server expects, not UTC.
+            "expiryDate": start.strftime("%Y-%m-%dT%H:%M:00.000Z"),
+            "connectorId": str(connector_id),
+            "chargeId": sn,
+            "loopType": 0 if every_day else -1,
+            "loopValue": start.strftime("%H:%M"),
+        }
+        if limit_key:
+            payload |= {"cKey": limit_key, "cValue": limit_value}
+        await self._call("/ocpp/cmd/", payload)
+
+    async def async_cancel_reservation(self, sn: str, reservation: dict[str, Any]) -> None:
+        """Delete a reservation, echoing it back as returned by charge/info."""
+        fields = {
+            key: reservation.get(key)
+            for key in (
+                "cKey",
+                "cValue",
+                "connectorId",
+                "expiryDate",
+                "loopValue",
+                "loopType",
+                "reservationId",
+            )
+        }
+        await self._call("/ocpp/api/updateReserve", {**fields, "sn": sn, "ctype": "2"})
 
     async def async_stop_charging(
         self, sn: str, connector_id: int, transaction_id: str
@@ -143,14 +200,46 @@ class GrowattThorApi:
 
     # --- Transport --------------------------------------------------------
 
+    async def _login(self) -> None:
+        """Log in; the caller holds the login lock. Failures pause further logins."""
+        wait = self._login_retry_at - time.monotonic()
+        if wait > 0:
+            raise GrowattThorApiError(f"Login paused after a failure, retry in {wait:.0f} s")
+        try:
+            data = await self._request(
+                "/ocpp/user",
+                {
+                    "cmd": "shineLogin",
+                    "userId": self._user_id,
+                    "password": self._password_hash,
+                    "lan": LAN,
+                },
+            )
+        except GrowattThorApiError:
+            self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
+            raise
+        token = data.get("token")
+        if data.get("code") != CODE_OK or not token:
+            self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
+            raise GrowattThorAuthError(str(data.get("data") or "Login failed"))
+        self._login_retry_at = 0.0
+        self._token = token
+
+    async def _refresh_token(self, stale: str | None) -> None:
+        """Log in unless a concurrent call already replaced the `stale` token."""
+        async with self._login_lock:
+            if self._token is None or self._token == stale:
+                await self._login()
+
     async def _call(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Authenticated call; logs in again once if the token has expired."""
         payload = {"userId": self._user_id, "lan": LAN, **payload}
         if self._token is None:
-            await self.login()
+            await self._refresh_token(None)
+        used_token = self._token
         data = await self._request(path, payload)
         if data.get("code") == CODE_NOT_LOGGED_IN:
-            await self.login()
+            await self._refresh_token(used_token)
             data = await self._request(path, payload)
         if data.get("code") != CODE_OK:
             raise GrowattThorApiError(f"{path} failed: {data.get('data')}")
@@ -165,6 +254,8 @@ class GrowattThorApi:
             async with self._session.post(
                 self._base_url + path, json=payload, headers=headers, timeout=TIMEOUT
             ) as resp:
+                if resp.status == 429:
+                    raise GrowattThorApiError(f"{path}: rate limited by Growatt (HTTP 429)")
                 resp.raise_for_status()
                 body = await resp.text()
         except (aiohttp.ClientError, TimeoutError) as err:
