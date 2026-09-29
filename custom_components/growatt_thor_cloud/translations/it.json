@@ -41,22 +41,22 @@
         "name": "Corrente massima"
       },
       "solar_limit_power": {
-        "name": "Limite rete ECO"
+        "name": "Avanzate - Limite rete ECO"
       },
       "import_grid_power": {
-        "name": "Potenza importata da rete"
+        "name": "PV Linkage - Potenza importata da rete"
       },
       "limit_cost": {
-        "name": "Limite costo"
+        "name": "Fast - Limite costo"
       },
       "limit_energy": {
-        "name": "Limite energia"
+        "name": "Fast - Limite energia"
       },
       "limit_duration": {
-        "name": "Limite durata"
+        "name": "Fast - Limite durata"
       },
       "boost_energy": {
-        "name": "Energia Boost"
+        "name": "Boost - Energia"
       }
     },
     "select": {
@@ -69,7 +69,7 @@
         }
       },
       "solar_mode": {
-        "name": "Modalità solare",
+        "name": "Avanzate - Modalità solare",
         "state": {
           "fast": "FAST",
           "eco": "ECO (surplus + rete)",
@@ -85,7 +85,7 @@
         }
       },
       "charge_limit": {
-        "name": "Limite ricarica",
+        "name": "Fast - Limite ricarica",
         "state": {
           "none": "Nessuno",
           "cost": "Costo",
@@ -94,7 +94,7 @@
         }
       },
       "start_mode": {
-        "name": "Avvio",
+        "name": "Fast - Avvio",
         "state": {
           "now": "Subito",
           "at_time": "All'orario",
@@ -102,7 +102,7 @@
         }
       },
       "boost_type": {
-        "name": "Tipo Boost",
+        "name": "Boost - Tipo",
         "state": {
           "manual": "Manuale",
           "smart": "Smart"
@@ -194,24 +194,42 @@
     },
     "time": {
       "start_time": {
-        "name": "Orario di avvio"
+        "name": "Fast - Orario di avvio"
       },
       "boost_from": {
-        "name": "Boost dalle"
+        "name": "Boost - Dalle"
       },
       "boost_to": {
-        "name": "Boost alle"
+        "name": "Boost - Alle"
       },
       "boost_departure": {
-        "name": "Orario di partenza Boost"
+        "name": "Boost - Orario di partenza"
+      },
+      "off_peak_1_from": {
+        "name": "Off-peak - Fascia 1 dalle"
+      },
+      "off_peak_2_from": {
+        "name": "Off-peak - Fascia 2 dalle"
+      },
+      "off_peak_3_from": {
+        "name": "Off-peak - Fascia 3 dalle"
+      },
+      "off_peak_1_to": {
+        "name": "Off-peak - Fascia 1 alle"
+      },
+      "off_peak_2_to": {
+        "name": "Off-peak - Fascia 2 alle"
+      },
+      "off_peak_3_to": {
+        "name": "Off-peak - Fascia 3 alle"
       }
     },
     "button": {
       "start_plan": {
-        "name": "Avvia ricarica programmata"
+        "name": "Fast - Avvia ricarica programmata"
       },
       "cancel_reservation": {
-        "name": "Annulla prenotazione"
+        "name": "Fast - Annulla prenotazione"
       }
     }
   },
@@ -229,7 +247,7 @@
   "services": {
     "start_charging": {
       "name": "Avvia ricarica",
-      "description": "Avvia subito o a un orario, con un eventuale limite di costo, energia o durata.",
+      "description": "Solo in modalità Fast: avvia subito o a un orario, con un eventuale limite di costo, energia o durata.",
       "fields": {
         "device_id": {
           "name": "Colonnina",

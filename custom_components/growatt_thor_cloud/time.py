@@ -1,4 +1,4 @@
-"""Times staged for the next scheduled start and for Boost."""
+"""Times staged for the next scheduled start, Boost and Off-peak."""
 
 from __future__ import annotations
 
@@ -13,7 +13,14 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity
-from .schedule import async_update_plan, effective_plan, ha_errors
+from .schedule import (
+    LIVE_BOOST,
+    LIVE_OFF_PEAK,
+    OFF_PEAK_SLOTS,
+    async_update_plan,
+    effective_plan,
+    ha_errors,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -21,17 +28,29 @@ class ThorPlanTimeDescription(TimeEntityDescription):
     """A time staged in HA."""
 
     plan_field: str
-    boost: bool = False  # Resent at once when changed while Boost runs.
+    live: str | None = None  # Live setting it belongs to (resent while in use).
 
 
 PLAN_TIMES: tuple[ThorPlanTimeDescription, ...] = (
-    # Used when the start mode is "at time" or "every day".
+    # Fast: used when the start is "at time" or "every day".
     ThorPlanTimeDescription(key="start_time", plan_field="start_time"),
     # Manual Boost: full power from/to.
-    ThorPlanTimeDescription(key="boost_from", plan_field="boost_from", boost=True),
-    ThorPlanTimeDescription(key="boost_to", plan_field="boost_to", boost=True),
+    ThorPlanTimeDescription(key="boost_from", plan_field="boost_from", live=LIVE_BOOST),
+    ThorPlanTimeDescription(key="boost_to", plan_field="boost_to", live=LIVE_BOOST),
     # Smart Boost: energy guaranteed by this time.
-    ThorPlanTimeDescription(key="boost_departure", plan_field="boost_departure", boost=True),
+    ThorPlanTimeDescription(
+        key="boost_departure", plan_field="boost_departure", live=LIVE_BOOST
+    ),
+    # Off-peak slots; start = end leaves a slot unused.
+    *(
+        ThorPlanTimeDescription(
+            key=f"off_peak_{index}_{edge}",
+            plan_field=f"off_peak_{index}_{edge}",
+            live=LIVE_OFF_PEAK,
+        )
+        for index in range(1, OFF_PEAK_SLOTS + 1)
+        for edge in ("from", "to")
+    ),
 )
 
 
@@ -68,7 +87,10 @@ class ThorPlanTime(ThorEntity, TimeEntity, RestoreEntity):
             value = time.fromisoformat(last.state)
         except ValueError:
             return  # "unknown" / "unavailable"
-        setattr(self.coordinator.plan(self._sn), self.entity_description.plan_field, value)
+        plan = self.coordinator.plan(self._sn)
+        setattr(plan, self.entity_description.plan_field, value)
+        if self.entity_description.live == LIVE_OFF_PEAK:
+            plan.off_peak_staged = True
 
     @property
     def native_value(self) -> time:
@@ -77,11 +99,11 @@ class ThorPlanTime(ThorEntity, TimeEntity, RestoreEntity):
         )
 
     async def async_set_value(self, value: time) -> None:
-        with ha_errors("Could not update Boost"):
+        with ha_errors("Could not update the setting"):
             await async_update_plan(
                 self.coordinator,
                 self._sn,
                 self.entity_description.plan_field,
                 value.replace(second=0, microsecond=0),
-                self.entity_description.boost,
+                self.entity_description.live,
             )

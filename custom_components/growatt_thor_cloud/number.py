@@ -29,7 +29,7 @@ from .charge_mode import MODE_PV_LINKAGE, charge_mode_fields, format_kw
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity, to_float
-from .schedule import async_update_plan, effective_plan, ha_errors
+from .schedule import LIVE_BOOST, async_update_plan, effective_plan, ha_errors
 
 # Upper bound for power settings when the charger does not report its rating.
 DEFAULT_MAX_POWER_KW = 22.0
@@ -79,7 +79,7 @@ class ThorPlanNumberDescription(NumberEntityDescription):
 
     plan_field: str
     currency: bool = False  # Unit is the charger currency.
-    boost: bool = False  # Resent at once when changed while Boost runs.
+    live: str | None = None  # Live setting it belongs to (resent while in use).
 
 
 PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
@@ -121,7 +121,7 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         native_max_value=200,
         native_step=0.5,
         mode=NumberMode.BOX,
-        boost=True,
+        live=LIVE_BOOST,
     ),
 )
 
@@ -244,7 +244,7 @@ class ThorPlanNumber(ThorEntity, RestoreNumber):
         field = self.entity_description.plan_field
         # Keep the field's type: durations are whole minutes.
         value = type(getattr(self.coordinator.plan(self._sn), field))(value)
-        with ha_errors("Could not update Boost"):
+        with ha_errors("Could not update the setting"):
             await async_update_plan(
-                self.coordinator, self._sn, field, value, self.entity_description.boost
+                self.coordinator, self._sn, field, value, self.entity_description.live
             )

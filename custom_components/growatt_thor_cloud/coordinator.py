@@ -73,6 +73,17 @@ class ChargePlan:
     boost_to: time = time(14, 0)
     boost_departure: time = time(7, 0)  # smart: energy guaranteed by this time
     boost_energy: float = 20.0  # smart: kWh
+    # Off-peak slots; a slot whose start equals its end is unused ("00:00-00:00").
+    off_peak_1_from: time = time(23, 0)
+    off_peak_1_to: time = time(7, 0)
+    off_peak_2_from: time = time(0, 0)
+    off_peak_2_to: time = time(0, 0)
+    off_peak_3_from: time = time(0, 0)
+    off_peak_3_to: time = time(0, 0)
+    # Slots beyond the third set from the app ("HH:MM-HH:MM"), kept as they are.
+    off_peak_extra: list[str] = field(default_factory=list)
+    # True once the user staged slots in HA; until then they follow the charger.
+    off_peak_staged: bool = False
 
 
 class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):

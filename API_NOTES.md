@@ -77,6 +77,7 @@ Finishing, Reserved, Unavailable, Faulted`.
   `G_SetAmount` (cost, currency), `G_SetEnergy` (kWh), `G_SetTime` (duration in minutes; the app
   picks it as hours and minutes). `G_SetTime` also needs `"loopType": -1, "loopValue": "h:m"`
   (not zero-padded, e.g. `"1:30"`).
+- Limited and scheduled starts are offered by the app in Fast mode only.
 - Scheduled start: `POST /ocpp/cmd/` `{"action":"ReserveNow","expiryDate","connectorId","chargeId",
   "loopType","loopValue","userId","lan"}` plus optional `cKey`/`cValue`.
   `expiryDate` = `"YYYY-MM-DDTHH:MM:00.000Z"` in local time (the `Z` is literal, not UTC),
@@ -92,5 +93,6 @@ Finishing, Reserved, Unavailable, Faulted`.
   - `fast`: nothing else.
   - `pvLinkage`: `boost`, `boostType`, `config`, `importGrid`, plus the meter setup
     `G_ExternalSamplingCurWring` and `G_PowerMeterType` from `configInfo`.
-  - `offPeak`: `boost`, `boostType`, `config`, `G_PeriodTime` = `"time1=HH:MM-HH:MM&time2=..."`.
-    Default slots are the cheapest `priceConf` entries.
+  - `offPeak`: `boost`, `boostType`, `config`, `G_PeriodTime` = `"time1=HH:MM-HH:MM&time2=..."`,
+    up to 5 slots in the app. Default slots are the cheapest `priceConf` entries. Only smart
+    Boost exists in Off-peak.

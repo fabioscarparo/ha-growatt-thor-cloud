@@ -41,22 +41,22 @@
         "name": "Max current"
       },
       "solar_limit_power": {
-        "name": "ECO grid limit"
+        "name": "Advanced - ECO grid limit"
       },
       "import_grid_power": {
-        "name": "Grid import power"
+        "name": "PV Linkage - Grid import power"
       },
       "limit_cost": {
-        "name": "Cost limit"
+        "name": "Fast - Cost limit"
       },
       "limit_energy": {
-        "name": "Energy limit"
+        "name": "Fast - Energy limit"
       },
       "limit_duration": {
-        "name": "Duration limit"
+        "name": "Fast - Duration limit"
       },
       "boost_energy": {
-        "name": "Boost energy"
+        "name": "Boost - Energy"
       }
     },
     "select": {
@@ -69,7 +69,7 @@
         }
       },
       "solar_mode": {
-        "name": "Solar mode",
+        "name": "Advanced - Solar mode",
         "state": {
           "fast": "FAST",
           "eco": "ECO (surplus + grid)",
@@ -85,7 +85,7 @@
         }
       },
       "charge_limit": {
-        "name": "Charge limit",
+        "name": "Fast - Charge limit",
         "state": {
           "none": "None",
           "cost": "Cost",
@@ -94,7 +94,7 @@
         }
       },
       "start_mode": {
-        "name": "Start",
+        "name": "Fast - Start",
         "state": {
           "now": "Now",
           "at_time": "At time",
@@ -102,7 +102,7 @@
         }
       },
       "boost_type": {
-        "name": "Boost type",
+        "name": "Boost - Type",
         "state": {
           "manual": "Manual",
           "smart": "Smart"
@@ -194,24 +194,42 @@
     },
     "time": {
       "start_time": {
-        "name": "Start time"
+        "name": "Fast - Start time"
       },
       "boost_from": {
-        "name": "Boost from"
+        "name": "Boost - From"
       },
       "boost_to": {
-        "name": "Boost to"
+        "name": "Boost - To"
       },
       "boost_departure": {
-        "name": "Boost departure time"
+        "name": "Boost - Departure time"
+      },
+      "off_peak_1_from": {
+        "name": "Off-peak - Slot 1 from"
+      },
+      "off_peak_2_from": {
+        "name": "Off-peak - Slot 2 from"
+      },
+      "off_peak_3_from": {
+        "name": "Off-peak - Slot 3 from"
+      },
+      "off_peak_1_to": {
+        "name": "Off-peak - Slot 1 to"
+      },
+      "off_peak_2_to": {
+        "name": "Off-peak - Slot 2 to"
+      },
+      "off_peak_3_to": {
+        "name": "Off-peak - Slot 3 to"
       }
     },
     "button": {
       "start_plan": {
-        "name": "Start scheduled charge"
+        "name": "Fast - Start scheduled charge"
       },
       "cancel_reservation": {
-        "name": "Cancel reservation"
+        "name": "Fast - Cancel reservation"
       }
     }
   },
@@ -229,7 +247,7 @@
   "services": {
     "start_charging": {
       "name": "Start charging",
-      "description": "Start now or at a time, optionally stopping at a cost, energy or duration limit.",
+      "description": "Fast mode only: start now or at a time, optionally stopping at a cost, energy or duration limit.",
       "fields": {
         "device_id": {
           "name": "Charger",

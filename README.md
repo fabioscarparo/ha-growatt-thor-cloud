@@ -26,6 +26,10 @@ Add **Growatt THOR EV Charger (Cloud)** from *Settings > Devices & services > Ad
 using your Growatt account username and password. Only the Growatt password hash is stored.
 
 ## Entities
+Settings that belong to one mode are grouped by name: **Fast - ...**, **PV Linkage - ...**,
+**Off-peak - ...**, **Boost - ...** (Boost works in PV Linkage and Off-peak), **Advanced - ...**.
+Commands that do not apply to the current mode are shown as unavailable.
+
 | Entity | Type | Notes |
 |---|---|---|
 | Status | sensor (enum) | OCPP connector status |
@@ -39,41 +43,51 @@ using your Growatt account username and password. Only the Growatt password hash
 | Grid sampling device, Meter type | diagnostic | CT or meter used by PV Linkage / load balancing |
 | Online | binary sensor | cloud connection of the charger |
 | Cable lock | binary sensor | on = unlocked |
+| Charge mode | select | Fast / PV Linkage / Off-peak |
 | Charging | switch | remote start / stop, no limit |
-| Boost | switch | PV Linkage / Off-peak, uses the Boost settings below |
-| Load balancing | switch | dynamic load balancing with the external meter |
-| LCD display | switch | off = screen turns off automatically |
-| Charge mode | select | Fast / PV Linkage / Off-peak, see below |
-| Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
+| Boost | switch | PV Linkage and Off-peak only |
 | Max current | number | 6-32 A |
 | Authorization mode | select | APP/RFID / RFID / Plug & Charge |
-| Start scheduled charge, Cancel reservation | button | send the scheduled charge settings below |
-| Charge limit, Cost / Energy / Duration limit, Start, Start time | config | scheduled charge settings |
-| Boost type, Boost from / to, Boost departure time, Boost energy | config | Boost settings |
-| Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
-| ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
+| Load balancing | switch | dynamic load balancing with the external meter |
+| LCD display | switch | off = screen turns off automatically |
+| Fast - Charge limit, Cost / Energy / Duration limit, Start, Start time | config | scheduled charge |
+| Fast - Start scheduled charge | button | Fast only |
+| Fast - Cancel reservation | button | available when a reservation exists |
+| PV Linkage - Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
+| Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
+| Boost - Type, From, To, Departure time, Energy | config | Boost settings |
+| Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
+| Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
 
 ### Charge modes
-- **Fast**: charges at maximum power, from PV or grid.
+- **Fast**: charges at maximum power, from PV or grid. Can stop at a limit and start at a time
+  (see *Scheduled charging*).
 - **PV Linkage**: charges with PV surplus; needs a CT or meter. The minimum charging power is
   1.4 kW single-phase (4.1 kW three-phase). With *Grid import power* at 0 charging pauses when
   the surplus drops below it; with P kW the grid tops up to P kW to keep charging.
-- **Off-peak**: charges only in the off-peak time slots. Uses the slots chosen in the Growatt app,
-  or the cheapest tariff slots if none were chosen; tariffs must be set in the Growatt app first.
+- **Off-peak**: charges only in the off-peak slots.
 
 Switching mode from Home Assistant turns Boost off.
 
-### Scheduled charging
+### Scheduled charging (Fast)
 Pick a **Charge limit** (none, cost, energy or duration) and its value, a **Start** (now, at
 time, every day) and a **Start time**, then press **Start scheduled charge**. A start at a time
 becomes a reservation on the charger, shown in **Next reservation** and removed with
 **Cancel reservation**. These settings live in Home Assistant until you press the button and
 are kept across restarts.
 
+### Off-peak slots
+Up to 3 slots (**Off-peak - Slot n from / to**); a slot whose start equals its end, such as
+00:00-00:00, is unused. While in Off-peak they show the charger's slots and changes are sent
+right away; otherwise they are used the next time Off-peak is selected. Until you set them they
+follow the last slots used, else the cheapest tariff slots. The Growatt app allows up to 5 slots:
+extra slots set there are kept when changing the first 3 from Home Assistant.
+
 ### Boost
 In PV Linkage or Off-peak, **Boost** charges regardless of PV:
-- **Manual** (PV Linkage only): full power between *Boost from* and *Boost to*.
-- **Smart**: guarantees *Boost energy* by *Boost departure time*, using the grid if needed.
+- **Manual** (PV Linkage only): full power between *Boost - From* and *Boost - To*.
+- **Smart**: guarantees *Boost - Energy* by *Boost - Departure time*, using the grid if needed.
+  Off-peak always uses smart Boost.
 
 While Boost is on, its settings show what the charger runs and changes are sent right away.
 
@@ -89,6 +103,8 @@ data:
   start_time: "23:00" # omit to start now
   every_day: true
 ```
+
+`start_charging` works in Fast only.
 
 - `growatt_thor_cloud.cancel_reservation`: cancel the scheduled starts.
 - `growatt_thor_cloud.set_boost`: `enabled`, `type` (manual/smart), `from`, `to`, `departure`, `energy`.

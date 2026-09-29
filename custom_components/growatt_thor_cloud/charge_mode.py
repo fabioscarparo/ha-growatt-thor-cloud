@@ -68,8 +68,12 @@ def charge_mode_fields(
         )
         fields["importGrid"] = format_kw(current.get("importGrid"))
     elif mode == MODE_OFF_PEAK:
-        # Reuse the slots chosen by the user, else default to the cheapest tariff.
-        period = current.get("G_PeriodTime") or cheapest_period_time(charger)
+        # Given slots, else the last ones used, else the cheapest tariff slots.
+        period = (
+            overrides.get("G_PeriodTime")
+            or current.get("G_PeriodTime")
+            or cheapest_period_time(charger)
+        )
         if not period:
             raise ValueError("No tariff time slots configured")
         fields["G_PeriodTime"] = period

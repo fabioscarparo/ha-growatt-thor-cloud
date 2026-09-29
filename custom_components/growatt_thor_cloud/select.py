@@ -16,7 +16,13 @@ from .charge_mode import MODE_FAST, MODE_OFF_PEAK, MODE_PV_LINKAGE, charge_mode_
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity
-from .schedule import async_update_plan, effective_plan, ha_errors
+from .schedule import (
+    LIVE_BOOST,
+    async_update_plan,
+    effective_plan,
+    ha_errors,
+    off_peak_fields,
+)
 
 # HA option -> /ocpp/chargeMode "mode" value.
 CHARGE_MODES = {
@@ -58,7 +64,7 @@ class ThorPlanSelectDescription(SelectEntityDescription):
     """A choice staged in HA for the next scheduled start or for Boost."""
 
     plan_field: str
-    boost: bool = False  # Resent at once when changed while Boost runs.
+    live: str | None = None  # Live setting it belongs to (resent while in use).
 
 
 PLAN_SELECTS: tuple[ThorPlanSelectDescription, ...] = (
@@ -76,7 +82,7 @@ PLAN_SELECTS: tuple[ThorPlanSelectDescription, ...] = (
         key="boost_type",
         plan_field="boost_type",
         options=["manual", "smart"],
-        boost=True,
+        live=LIVE_BOOST,
     ),
 )
 
@@ -114,16 +120,15 @@ class ThorChargeModeSelect(ThorEntity, SelectEntity):
         return next((opt for opt, m in CHARGE_MODES.items() if m == mode), None)
 
     async def async_select_option(self, option: str) -> None:
-        try:
-            fields = charge_mode_fields(self.charger, CHARGE_MODES[option])
-        except ValueError as err:
-            raise HomeAssistantError(
-                "Off-peak needs tariff time slots: set them in the Growatt app first"
-            ) from err
-        try:
+        mode = CHARGE_MODES[option]
+        with ha_errors("Could not set charge mode"):
+            if mode == MODE_OFF_PEAK:
+                # Off-peak goes with the staged slots (Off-peak - Slot n entities).
+                plan = effective_plan(self.coordinator, self._sn)
+                fields = off_peak_fields(self.charger, plan)
+            else:
+                fields = charge_mode_fields(self.charger, mode)
             await self.coordinator.api.async_set_charge_mode(self._sn, CONNECTOR_ID, fields)
-        except GrowattThorError as err:
-            raise HomeAssistantError(f"Could not set charge mode: {err}") from err
         self.charger.charge_mode.update(fields)
         self.async_write_ha_state()
         await self.coordinator.async_refresh_after_write()
@@ -190,11 +195,11 @@ class ThorPlanSelect(ThorEntity, SelectEntity, RestoreEntity):
         )
 
     async def async_select_option(self, option: str) -> None:
-        with ha_errors("Could not update Boost"):
+        with ha_errors("Could not update the setting"):
             await async_update_plan(
                 self.coordinator,
                 self._sn,
                 self.entity_description.plan_field,
                 option,
-                self.entity_description.boost,
+                self.entity_description.live,
             )
