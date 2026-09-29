@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growatt_thor_cloud.api import GrowattThorAuthError, hash_password
 from custom_components.growatt_thor_cloud.const import CONF_PASSWORD_HASH, DOMAIN
+from custom_components.growatt_thor_cloud.sensor import _in_slot
 
 from .conftest import SN
 
@@ -76,6 +77,7 @@ async def test_entities(hass: HomeAssistant, mock_api) -> None:
     assert state("sensor", "session_energy") == "3.5"
     assert states[f"sensor.{prefix}_session_cost"].attributes["unit_of_measurement"] == "EUR"
     assert states[f"sensor.{prefix}_tariff"].attributes["unit_of_measurement"] == "EUR/kWh"
+    assert state("sensor", "tariff") == "0.21"  # From priceConf, not the session rate.
     assert state("binary_sensor", "online") == "on"
     assert state("binary_sensor", "cable_lock") == "off"  # locked
     assert state("switch", "charging") == "on"
@@ -143,3 +145,12 @@ async def test_auth_failure_starts_reauth(hass: HomeAssistant, mock_api) -> None
     assert entry.state is config_entries.ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress()
     assert [f["context"]["source"] for f in flows] == ["reauth"]
+
+
+def test_tariff_slots() -> None:
+    """Slots include their end minute and may wrap past midnight."""
+    assert _in_slot("00:00-23:59", "23:59")
+    assert _in_slot("22:00-08:00", "23:30")
+    assert _in_slot("22:00-08:00", "07:00")
+    assert not _in_slot("22:00-08:00", "12:00")
+    assert not _in_slot("", "12:00")

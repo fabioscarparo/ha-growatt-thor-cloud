@@ -22,6 +22,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
+from homeassistant.util import dt as dt_util
 
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
@@ -40,6 +41,31 @@ CONNECTOR_STATUS = {
 }
 # /ocpp/chargeMode "mode" values -> HA enum states.
 CHARGE_MODES = {"fast": "fast", "offPeak": "off_peak", "pvLinkage": "pv_linkage"}
+
+
+def _in_slot(slot: str, now: str) -> bool:
+    """Whether "HH:MM" `now` falls in an "HH:MM-HH:MM" slot (end included, may wrap midnight)."""
+    start, _, end = slot.partition("-")
+    if not start or not end:
+        return False
+    # Zero-padded times compare correctly as strings.
+    if start <= end:
+        return start <= now <= end
+    return now >= start or now <= end
+
+
+def _tariff(charger: ThorCharger) -> float | None:
+    """Price of the time slot in effect now.
+
+    The configured tariff is a list of time slots (priceConf); the connector's
+    "rate" is only the price applied to a running session and reads 0 when idle.
+    """
+    slots = charger.config.get("priceConf") or charger.summary.get("priceConf") or []
+    now = dt_util.now().strftime("%H:%M")
+    for slot in slots:
+        if _in_slot(str(slot.get("time", "")), now):
+            return to_float(slot.get("price"))
+    return to_float(charger.connector.get("rate"))
 
 
 def _power(charger: ThorCharger) -> float | None:
@@ -117,11 +143,10 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         currency_unit="",
         value_fn=lambda c: to_float(c.connector.get("cost")),
     ),
-    # "rate" is the configured price per kWh, not a power reading.
     ThorSensorDescription(
         key="tariff",
         currency_unit="/kWh",
-        value_fn=lambda c: to_float(c.connector.get("rate")),
+        value_fn=_tariff,
     ),
     ThorSensorDescription(
         key="error_code",

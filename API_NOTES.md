@@ -34,11 +34,15 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware `THOR_07ASB-
 
 Field meanings:
 - `charge/info`: `current` A, `voltage` V, `energy` kWh (session), `ctime` minutes,
-  `cost` currency, **`rate` = tariff per kWh, not power**. No power field, so power = V x I.
+  `cost` currency, `rate` = price applied to the running session (0 when idle, not power).
+  No power field, so power = V x I.
   Also `status`, `transactionId`, `online` (0/1), `errorCode`, `vendorErrorCode`,
   `elockstate` (`locked`/`unlocked`).
 - `configInfo` also contains secrets (`G_WifiPassword`, `G_CardPin`, `G_Authentication`):
   the integration drops them on read.
+- Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,
+  one entry per time slot; slots may wrap past midnight. Set with `POST /ocpp/api/`
+  `{"cmd":"addPrice","chargeId","priceConf":[{"time","price","name":""}],"userId","lan"}`.
 - `G_ChargerMode` (authorization): 1 = App, 2 = RFID, 3 = Plug&Charge (sent as int).
 - `G_SolarMode`: 0 = FAST, 1 = ECO, 2 = ECO+ (sent as int).
 - `G_MaxCurrent`: sent as string, minimum 3 A.

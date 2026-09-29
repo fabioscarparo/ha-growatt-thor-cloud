@@ -39,6 +39,7 @@ CONFIG = {
     "G_LCDCloseEnable": "Disable",
     "G_SolarLimitPower": 1.38,
     "power": 7000,
+    "priceConf": [{"price": "0.21", "time": "00:00-23:59"}],
 }
 CONNECTOR = {
     "chargeId": SN,
@@ -49,7 +50,7 @@ CONNECTOR = {
     "energy": 3.5,
     "ctime": 42,
     "cost": 0.56,
-    "rate": 0.16,
+    "rate": 0,  # Session rate: 0 in real responses even with a tariff set.
     "transactionId": 1234,
     "online": 1,
     "elockstate": "locked",
