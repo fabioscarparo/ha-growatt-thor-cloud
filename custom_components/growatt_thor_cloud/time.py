@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .coordinator import GrowattThorConfigEntry
-from .entity import ThorEntity
+from .entity import PlanStoredData, ThorEntity
 from .schedule import (
     LIVE_BOOST,
     LIVE_OFF_PEAK,
@@ -80,20 +80,22 @@ class ThorPlanTime(ThorEntity, TimeEntity, RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        last = await self.async_get_last_state()
-        if last is None:
+        saved = PlanStoredData.restore(await self.async_get_last_extra_data())
+        if saved is None:
             return
-        try:
-            value = time.fromisoformat(last.state)
-        except ValueError:
-            return  # "unknown" / "unavailable"
         plan = self.coordinator.plan(self._sn)
-        setattr(plan, self.entity_description.plan_field, value)
+        setattr(plan, self.entity_description.plan_field, time.fromisoformat(saved))
         if self.entity_description.live == LIVE_OFF_PEAK:
             plan.off_peak_staged = True
 
     @property
-    def native_value(self) -> time:
+    def extra_restore_state_data(self) -> PlanStoredData:
+        value = getattr(self.coordinator.plan(self._sn), self.entity_description.plan_field)
+        return PlanStoredData(None if value is None else value.isoformat())
+
+    @property
+    def native_value(self) -> time | None:
+        # None until set by the user (or read from the charger): shown as unknown.
         return getattr(
             effective_plan(self.coordinator, self._sn), self.entity_description.plan_field
         )

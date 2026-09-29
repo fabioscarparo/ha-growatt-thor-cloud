@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growatt_thor_cloud.api import GrowattThorAuthError, hash_password
@@ -176,13 +179,13 @@ async def test_charge_mode_off_peak_keeps_user_slots(hass: HomeAssistant, mock_a
     assert fields["G_PeriodTime"] == "time1=01:00-06:00"
 
 
-async def test_charge_mode_off_peak_default_slot(hass: HomeAssistant, mock_api) -> None:
-    """Without tariffs or previous slots, Off-peak uses the default staged slot."""
+async def test_charge_mode_off_peak_needs_slots(hass: HomeAssistant, mock_api) -> None:
+    """Without slots on the charger, tariffs or staged slots, Off-peak is refused."""
     mock_api.async_get_config.side_effect = lambda sn: {**CONFIG, "priceConf": []}
     await setup_integration(hass)
-    await _call(hass, "select", "select_option", "charge_mode", option="off_peak")
-    fields = mock_api.async_set_charge_mode.await_args.args[2]
-    assert fields["G_PeriodTime"] == "time1=23:00-07:00"
+    with pytest.raises(ServiceValidationError):
+        await _call(hass, "select", "select_option", "charge_mode", option="off_peak")
+    mock_api.async_set_charge_mode.assert_not_awaited()
 
 
 async def test_auth_failure_starts_reauth(hass: HomeAssistant, mock_api) -> None:

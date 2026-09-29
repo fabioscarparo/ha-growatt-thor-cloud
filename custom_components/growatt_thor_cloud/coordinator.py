@@ -60,22 +60,24 @@ class ChargePlan:
 
     The charger only learns them when a start is requested or Boost is turned
     on; until then they live here (and in the entities' restored state).
+    None means "not set yet": the charger keeps no such values, so none are
+    invented; using an unset value is reported as an error.
     """
 
     limit: str = "none"  # none / cost / energy / duration
-    limit_cost: float = 5.0  # currency
-    limit_energy: float = 10.0  # kWh
-    limit_duration: int = 120  # minutes
+    limit_cost: float | None = None  # currency
+    limit_energy: float | None = None  # kWh
+    limit_duration: int | None = None  # minutes
     start: str = "now"  # now / at_time / every_day
-    start_time: time = time(22, 0)
+    start_time: time | None = None
     boost_type: str = "manual"  # manual / smart
-    boost_from: time = time(12, 0)  # manual: full power in this window
-    boost_to: time = time(14, 0)
-    boost_departure: time = time(7, 0)  # smart: energy guaranteed by this time
-    boost_energy: float = 20.0  # smart: kWh
+    boost_from: time | None = None  # manual: full power in this window
+    boost_to: time | None = None
+    boost_departure: time | None = None  # smart: energy guaranteed by this time
+    boost_energy: float | None = None  # smart: kWh
     # Off-peak slots; a slot whose start equals its end is unused ("00:00-00:00").
-    off_peak_1_from: time = time(23, 0)
-    off_peak_1_to: time = time(7, 0)
+    off_peak_1_from: time = time(0, 0)
+    off_peak_1_to: time = time(0, 0)
     off_peak_2_from: time = time(0, 0)
     off_peak_2_to: time = time(0, 0)
     off_peak_3_from: time = time(0, 0)

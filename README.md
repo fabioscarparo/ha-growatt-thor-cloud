@@ -74,13 +74,14 @@ Pick a **Charge limit** (none, cost, energy or duration) and its value, a **Star
 time, every day) and a **Start time**, then press **Start scheduled charge**. A start at a time
 becomes a reservation on the charger, shown in **Next reservation** and removed with
 **Cancel reservation**. These settings live in Home Assistant until you press the button and
-are kept across restarts.
+are kept across restarts. Nothing is preset: the charger does not keep these values, so they
+start empty and pressing the button with a missing value reports an error.
 
 ### Off-peak slots
 Up to 3 slots (**Off-peak - Slot n from / to**); a slot whose start equals its end, such as
 00:00-00:00, is unused. While in Off-peak they show the charger's slots and changes are sent
 right away; otherwise they are used the next time Off-peak is selected. Until you set them they
-follow the last slots used, else the cheapest tariff slots. The Growatt app allows up to 5 slots:
+follow the last slots used, else the cheapest tariff slots, else they are unused. The Growatt app allows up to 5 slots:
 extra slots set there are kept when changing the first 3 from Home Assistant.
 
 ### Boost
@@ -90,6 +91,7 @@ In PV Linkage or Off-peak, **Boost** charges regardless of PV:
   Off-peak always uses smart Boost.
 
 While Boost is on, its settings show what the charger runs and changes are sent right away.
+Otherwise they start empty and must be set before turning Boost on.
 
 ### Actions
 The same features are available as actions for automations and scripts:

@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import mock_restore_cache
+from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
 
 from custom_components.growatt_thor_cloud.const import DOMAIN
 from custom_components.growatt_thor_cloud.coordinator import ChargePlan, ThorCharger
@@ -81,7 +81,8 @@ def test_boost_fields() -> None:
     # Off-peak only has smart Boost: a manual choice is sent as smart.
     charger.charge_mode["mode"] = "offPeak"
     charger.charge_mode["G_PeriodTime"] = "time1=01:00-06:00"
-    fields = boost_fields(charger, ChargePlan(boost_type="manual"), True)
+    plan = ChargePlan(boost_type="manual", boost_departure=time(7, 0), boost_energy=20)
+    fields = boost_fields(charger, plan, True)
     assert (fields["boostType"], fields["config"]) == ("smart", "contime=07:00&energy=20")
     assert fields["G_PeriodTime"] == "time1=01:00-06:00"
     charger.charge_mode["mode"] = "fast"
@@ -107,9 +108,11 @@ async def test_defaults(hass: HomeAssistant, mock_api) -> None:
     assert state(hass, "select", "charge_limit").state == "none"
     assert state(hass, "select", "start_mode").state == "now"
     assert state(hass, "select", "boost_type").state == "manual"
-    assert state(hass, "number", "limit_energy").state == "10.0"
+    # Nothing invented: values the charger does not keep stay unset.
+    assert state(hass, "number", "limit_energy").state == "unknown"
     assert state(hass, "number", "limit_cost").attributes["unit_of_measurement"] == "EUR"
-    assert state(hass, "time", "start_time").state == "22:00:00"
+    assert state(hass, "time", "start_time").state == "unknown"
+    assert state(hass, "time", "boost_from").state == "unknown"
     assert state(hass, "switch", "boost").state == "off"
     assert state(hass, "button", "cancel_reservation").state == "unavailable"
     assert state(hass, "sensor", "session_limit").state == "none"
@@ -119,17 +122,39 @@ async def test_defaults(hass: HomeAssistant, mock_api) -> None:
 
 
 async def test_restore_staged_values(hass: HomeAssistant, mock_api) -> None:
-    """Staged choices survive a restart."""
-    mock_restore_cache(
+    """Staged choices and values set by the user survive a restart."""
+    prefix = SN.lower()
+    mock_restore_cache_with_extra_data(
         hass,
         [
-            State(f"select.{SN.lower()}_fast_charge_limit", "cost"),
-            State(f"time.{SN.lower()}_fast_start_time", "06:30:00"),
+            (State(f"select.{prefix}_fast_charge_limit", "cost"), {}),
+            (State(f"time.{prefix}_fast_start_time", "06:30:00"), {"plan_value": "06:30:00"}),
+            (State(f"number.{prefix}_fast_cost_limit", "4.5"), {"plan_value": "4.5"}),
         ],
     )
     await setup_integration(hass)
     assert state(hass, "select", "charge_limit").state == "cost"
     assert state(hass, "time", "start_time").state == "06:30:00"
+    assert state(hass, "number", "limit_cost").state == "4.5"
+
+
+async def test_old_invented_values_are_dropped(hass: HomeAssistant, mock_api) -> None:
+    """Values saved by older versions (made-up defaults) do not come back."""
+    prefix = SN.lower()
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(f"number.{prefix}_fast_energy_limit", "10.0"),
+                {"native_value": 10.0, "native_min_value": 0.5, "native_max_value": 200,
+                 "native_step": 0.5, "native_unit_of_measurement": "kWh"},
+            ),
+            (State(f"time.{prefix}_fast_start_time", "22:00:00"), {}),
+        ],
+    )
+    await setup_integration(hass)
+    assert state(hass, "number", "limit_energy").state == "unknown"
+    assert state(hass, "time", "start_time").state == "unknown"
 
 
 async def test_start_now_with_limit(hass: HomeAssistant, mock_api) -> None:
@@ -192,6 +217,7 @@ async def test_boost_on(hass: HomeAssistant, mock_api) -> None:
     """Boost off: edits are only staged. Turning it on sends the staged window."""
     await setup_integration(hass)
     await call(hass, "time", "set_value", "boost_from", time="10:00:00")
+    await call(hass, "time", "set_value", "boost_to", time="14:00:00")
     mock_api.async_set_charge_mode.assert_not_awaited()
 
     await call(hass, "switch", "turn_on", "boost")
@@ -345,4 +371,28 @@ async def test_off_peak_needs_one_slot(hass: HomeAssistant, mock_api) -> None:
     await setup_integration(hass)
     with pytest.raises(ServiceValidationError):
         await call(hass, "time", "set_value", "off_peak_1_to", time="01:00:00")
+    mock_api.async_set_charge_mode.assert_not_awaited()
+
+
+async def test_unset_values_are_errors(hass: HomeAssistant, mock_api) -> None:
+    """Using a value that was never set is reported instead of sending a made-up one."""
+    _charge_mode(mock_api, mode="fast")
+    await setup_integration(hass)
+    await call(hass, "select", "select_option", "charge_limit", option="energy")
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "button", "press", "start_plan")
+
+    await call(hass, "select", "select_option", "charge_limit", option="none")
+    await call(hass, "select", "select_option", "start_mode", option="at_time")
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "button", "press", "start_plan")
+    mock_api.async_start_charging.assert_not_awaited()
+    mock_api.async_reserve_charging.assert_not_awaited()
+
+
+async def test_boost_needs_its_settings(hass: HomeAssistant, mock_api) -> None:
+    """Boost cannot be turned on before its window (manual) is set."""
+    await setup_integration(hass)
+    with pytest.raises(ServiceValidationError):
+        await call(hass, "switch", "turn_on", "boost")
     mock_api.async_set_charge_mode.assert_not_awaited()

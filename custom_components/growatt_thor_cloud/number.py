@@ -11,7 +11,6 @@ from homeassistant.components.number import (
     NumberEntity,
     NumberEntityDescription,
     NumberMode,
-    RestoreNumber,
 )
 from homeassistant.const import (
     EntityCategory,
@@ -23,12 +22,13 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .api import GrowattThorError
 from .charge_mode import MODE_PV_LINKAGE, charge_mode_fields, format_kw
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
-from .entity import ThorEntity, to_float
+from .entity import PlanStoredData, ThorEntity, to_float
 from .schedule import LIVE_BOOST, async_update_plan, effective_plan, ha_errors
 
 # Upper bound for power settings when the charger does not report its rating.
@@ -79,6 +79,7 @@ class ThorPlanNumberDescription(NumberEntityDescription):
 
     plan_field: str
     currency: bool = False  # Unit is the charger currency.
+    integer: bool = False  # Whole numbers only (minutes).
     live: str | None = None  # Live setting it belongs to (resent while in use).
 
 
@@ -111,6 +112,7 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         native_max_value=24 * 60 - 1,  # The app's picker stops at 23 h 59 min.
         native_step=1,
         mode=NumberMode.BOX,
+        integer=True,
     ),
     ThorPlanNumberDescription(
         key="boost_energy",
@@ -210,7 +212,7 @@ class ThorImportGridNumber(ThorEntity, NumberEntity):
         await self.coordinator.async_refresh_after_write()
 
 
-class ThorPlanNumber(ThorEntity, RestoreNumber):
+class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
     """Number for a staged plan value; the value survives restarts."""
 
     entity_description: ThorPlanNumberDescription
@@ -222,11 +224,21 @@ class ThorPlanNumber(ThorEntity, RestoreNumber):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        last = await self.async_get_last_number_data()
-        if last and last.native_value is not None:
-            field = self.entity_description.plan_field
-            plan = self.coordinator.plan(self._sn)
-            setattr(plan, field, type(getattr(plan, field))(last.native_value))
+        saved = PlanStoredData.restore(await self.async_get_last_extra_data())
+        if saved is not None:
+            setattr(
+                self.coordinator.plan(self._sn),
+                self.entity_description.plan_field,
+                self._convert(float(saved)),
+            )
+
+    @property
+    def extra_restore_state_data(self) -> PlanStoredData:
+        value = getattr(self.coordinator.plan(self._sn), self.entity_description.plan_field)
+        return PlanStoredData(None if value is None else str(value))
+
+    def _convert(self, value: float) -> float | int:
+        return int(value) if self.entity_description.integer else float(value)
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -235,16 +247,18 @@ class ThorPlanNumber(ThorEntity, RestoreNumber):
         return super().native_unit_of_measurement
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> float | None:
+        # None until set by the user: shown as unknown.
         return getattr(
             effective_plan(self.coordinator, self._sn), self.entity_description.plan_field
         )
 
     async def async_set_native_value(self, value: float) -> None:
-        field = self.entity_description.plan_field
-        # Keep the field's type: durations are whole minutes.
-        value = type(getattr(self.coordinator.plan(self._sn), field))(value)
         with ha_errors("Could not update the setting"):
             await async_update_plan(
-                self.coordinator, self._sn, field, value, self.entity_description.live
+                self.coordinator,
+                self._sn,
+                self.entity_description.plan_field,
+                self._convert(value),
+                self.entity_description.live,
             )

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
+from homeassistant.helpers.restore_state import ExtraStoredData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -51,3 +55,24 @@ def to_float(value: object) -> float | None:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+
+
+@dataclass
+class PlanStoredData(ExtraStoredData):
+    """A staged plan value as saved across restarts (None = never set).
+
+    Stored under its own key: values saved by older versions, which invented
+    defaults, lack it and are ignored instead of coming back.
+    """
+
+    value: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"plan_value": self.value}
+
+    @classmethod
+    def restore(cls, extra: ExtraStoredData | None) -> str | None:
+        """The saved value, or None if unset or saved by an older version."""
+        if extra is None:
+            return None
+        return extra.as_dict().get("plan_value")

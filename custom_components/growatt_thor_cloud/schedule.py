@@ -54,13 +54,14 @@ def ha_errors(action: str) -> Iterator[None]:
 
 def limit_fields(plan: ChargePlan) -> tuple[str | None, str | None]:
     """Session limit as (cKey, cValue); (None, None) when charging without a limit."""
-    if plan.limit == "cost":
-        return LIMIT_COST, f"{plan.limit_cost:g}"
-    if plan.limit == "energy":
-        return LIMIT_ENERGY, f"{plan.limit_energy:g}"
+    if plan.limit == "none":
+        return None, None
+    value = getattr(plan, f"limit_{plan.limit}")
+    if value is None:
+        raise PlanError(f"Set the {plan.limit} limit value first")
     if plan.limit == "duration":
-        return LIMIT_DURATION, str(int(plan.limit_duration))
-    return None, None
+        return LIMIT_DURATION, str(int(value))
+    return LIMIT_KEYS[plan.limit], f"{value:g}"
 
 
 def next_start(at: time, now: datetime) -> datetime:
@@ -74,6 +75,8 @@ async def async_start(coordinator: GrowattThorCoordinator, sn: str, plan: Charge
     if coordinator.data[sn].charge_mode.get("mode") != MODE_FAST:
         raise PlanError("Scheduled charging is only available in Fast mode")
     key, value = limit_fields(plan)
+    if plan.start != "now" and plan.start_time is None:
+        raise PlanError("Set the start time first")
     if plan.start == "now":
         await coordinator.api.async_start_charging(sn, CONNECTOR_ID, key, value)
     else:
@@ -168,8 +171,12 @@ def boost_fields(charger: ThorCharger, plan: ChargePlan, enabled: bool) -> dict[
     # Off-peak only has smart Boost.
     boost_type = "smart" if mode == MODE_OFF_PEAK else plan.boost_type
     if boost_type == "manual":
+        if plan.boost_from is None or plan.boost_to is None:
+            raise PlanError("Set the Boost from and to times first")
         config = f"time1={plan.boost_from:%H:%M}-{plan.boost_to:%H:%M}"
     else:
+        if plan.boost_departure is None or plan.boost_energy is None:
+            raise PlanError("Set the Boost departure time and energy first")
         config = f"contime={plan.boost_departure:%H:%M}&energy={plan.boost_energy:g}"
     return charge_mode_fields(charger, mode, boost="1", boostType=boost_type, config=config)
 
