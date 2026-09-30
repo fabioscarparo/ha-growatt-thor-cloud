@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+### New
+- Integration icon, shown by Home Assistant 2026.3 or newer.
+- README header with icon and badges.
+
 ## 0.5.1
 ### Changed
 - In Italian, Boost is shown as "Boost" again (it was "Incremento" in 0.5.0).

@@ -1,14 +1,34 @@
-# Growatt THOR EV Charger for Home Assistant
+<p align="center">
+  <img src="assets/icon.png" alt="Growatt THOR EV Charger" width="110">
+</p>
+
+<h1 align="center">Growatt THOR EV Charger for Home Assistant</h1>
+
+<p align="center">
+  <strong>Home Assistant integration for Growatt THOR wallboxes,<br>
+  through Growatt's cloud service.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/fabioscarparo/ha-growatt-thor-cloud/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/fabioscarparo/ha-growatt-thor-cloud?label=Release&color=5CC300"></a>
+  <a href="https://hacs.xyz/"><img alt="HACS Custom" src="https://img.shields.io/badge/HACS-Custom-41BDF5?logo=homeassistantcommunitystore&logoColor=fff"></a>
+  <a href="https://www.home-assistant.io/"><img alt="Home Assistant 2025.3+" src="https://img.shields.io/badge/Home_Assistant-2025.3%2B-18BCF2?logo=homeassistant&logoColor=fff"></a>
+  <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff"></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/License-MIT-333"></a>
+</p>
 
 Custom integration for Growatt THOR wallboxes, using Growatt's cloud service
 (`evcharge.growatt.com`). The official Growatt integration covers inverters only.
+
+---
 
 ## Tested with
 - THOR 07AS-P-V1, firmware `THOR_07ASB-VA1.2.3.0-NOVO`
 
 Other THOR models registered on a Growatt account should work, but have not been tested.
 
-Requires Home Assistant 2025.3 or newer.
+Requires Home Assistant 2025.3 or newer; the integration's icon shows from Home Assistant
+2026.3.
 
 ## Installation
 
@@ -188,6 +208,10 @@ If Growatt rejects the login, Home Assistant asks for the password again (*Setti
   pip install -r requirements_test.txt
   pytest
   ```
+
+## Note
+This is an unofficial project: it is **not affiliated with, endorsed by, or developed by
+Growatt**.
 
 ## License
 MIT, see [LICENSE](LICENSE).
