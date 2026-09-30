@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3
+### Changed
+- The integration icon has rounded corners.
+
 ## 0.5.2
 ### New
 - Integration icon, shown by Home Assistant 2026.3 or newer.
