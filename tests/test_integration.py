@@ -71,6 +71,7 @@ async def test_entities(hass: HomeAssistant, mock_api) -> None:
     assert state("switch", "charging") == "on"
     assert state("switch", "load_balancing") == "off"
     assert state("switch", "lcd_display") == "on"
+    assert state("switch", "warm_up") == "off"
     assert state("number", "max_current") == "32.0"
     assert state("number", "import_grid_power") == "0.0"
     assert _state(hass, "number", "import_grid_power").attributes["max"] == 7.0
@@ -103,6 +104,9 @@ async def test_controls(hass: HomeAssistant, mock_api) -> None:
 
     await _call(hass, "switch", "turn_on", "load_balancing")
     mock_api.async_set_config.assert_awaited_with(SN, "G_ExternalLimitPowerEnable", 1)
+
+    await _call(hass, "switch", "turn_on", "warm_up")
+    mock_api.async_set_config.assert_awaited_with(SN, "G_FullContinueChargeEnable", "Enable")
 
 
 async def test_hidden_settings(hass: HomeAssistant, mock_api) -> None:

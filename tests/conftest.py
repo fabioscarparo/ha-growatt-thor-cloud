@@ -37,6 +37,7 @@ CONFIG = {
     "G_ChargerMode": "3",
     "G_ExternalLimitPowerEnable": 0,
     "G_LCDCloseEnable": "Disable",
+    "G_FullContinueChargeEnable": "Disable",
     "G_SolarLimitPower": 1.38,
     "power": 7000,
     "G_ExternalSamplingCurWring": 1,

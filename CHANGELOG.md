@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+### New
+- *General - Warm-up*: once the EV is full, the charger keeps supplying power so it can
+  preheat in cold weather.
+
+### Changed
+- Entity names are grouped so related entities sit together on the device page:
+  *General* (every mode), *Fast*, *PV Linkage*, *Off-peak*, *Boost* (manual / smart),
+  *Session* and *Advanced*. Existing entity ids are unchanged.
+- "Reservation" is now called "scheduled start" in entity names, the status and the
+  `cancel_reservation` action (its id is unchanged).
+- In Italian, Boost is shown as "Incremento".
+
 ## 0.4.2
 ### Fixed
 - Reservations are read from the reservation list (`/ocpp/api/ReserveNow`), while one is

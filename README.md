@@ -29,42 +29,60 @@ using your Growatt account username and password. Only the Growatt password hash
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Entities
-Settings that belong to one mode are grouped by name: **Fast - ...**, **PV Linkage - ...**,
-**Off-peak - ...**, **Boost - ...** (Boost works in PV Linkage and Off-peak), **Advanced - ...**.
-Commands that do not apply to the current mode are shown as unavailable.
+Home Assistant lists a device's entities alphabetically within each section, so names carry a
+group prefix: **General - ...** (every mode), **Fast - ...**, **PV Linkage - ...**,
+**Off-peak - ...**, **Boost ...** (PV Linkage and Off-peak), **Session - ...** and
+**Advanced - ...**. Commands that do not apply to the current mode are shown as unavailable.
+In Italian, Boost is shown as *Incremento*.
 
+### Controls
 | Entity | Type | Notes |
 |---|---|---|
-| Status | sensor (enum) | connector status; any pending reservation reads as Reserved |
-| Power | sensor, W | computed as voltage x current (single-phase) |
-| Current, Voltage | sensor | |
-| Session energy / duration / cost | sensor | reset at each session |
-| Tariff | sensor | price of the charger's tariff slot in effect now; unknown if no slot covers now (outside a session) |
-| Session limit | sensor (enum) | limit of the current session; value in the `value` attribute |
-| Next reservation | sensor, timestamp | next scheduled start; `every_day`, `limit`, `limit_value` attributes |
-| Error code, Vendor error code, IP | diagnostic | |
-| Grid sampling device, Meter type | diagnostic | CT or meter used by PV Linkage / load balancing |
-| Online | binary sensor | off when the status is Unavailable or not a known status |
-| Cable lock | binary sensor | on = unlocked |
+| Boost | switch | PV Linkage and Off-peak only |
 | Charge mode | select | Fast / PV Linkage / Off-peak |
 | Charging | switch | remote start / stop, no limit |
-| Boost | switch | PV Linkage and Off-peak only |
-| Max current | number | 6-32 A |
-| Authorization mode | select | APP/RFID / RFID / Plug & Charge |
-| Load balancing | switch | dynamic load balancing with the external meter |
-| LCD display | switch | off = screen turns off automatically |
-| Fast - Charge limit, Start | select | scheduled charge |
-| Fast - Cost / Energy / Duration limit | number | scheduled charge; duration in minutes |
-| Fast - Start time | time | scheduled charge |
+| Fast - Cancel scheduled start | button | available when a scheduled start exists |
 | Fast - Start scheduled charge | button | Fast only |
-| Fast - Cancel reservation | button | available when a reservation exists |
-| PV Linkage - Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
-| Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
-| Boost - Type | select | manual / smart (Off-peak is always smart) |
-| Boost - From, To, Departure time | time | manual window / smart deadline |
-| Boost - Energy | number | kWh guaranteed by smart Boost |
-| Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
+
+### Sensors
+| Entity | Type | Notes |
+|---|---|---|
+| Cable lock | binary sensor | on = unlocked |
+| Current, Voltage | sensor | |
+| Fast - Next scheduled start | timestamp | `every_day`, `limit`, `limit_value` attributes |
+| Power | sensor, W | computed as voltage x current (single-phase) |
+| Session - Cost, Duration, Energy | sensor | reset at each session |
+| Session - Limit | enum | limit of the current session; value in the `value` attribute |
+| Status | enum | connector status; a pending scheduled start reads as *Scheduled start* |
+| Tariff | sensor | price of the charger's tariff slot in effect now; unknown if no slot covers now (outside a session) |
+
+### Configuration
+| Entity | Type | Notes |
+|---|---|---|
 | Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
+| Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
+| Boost - Type | select | manual / smart (Off-peak is always smart) |
+| Boost manual - From, To | time | full power window (PV Linkage only) |
+| Boost smart - Departure time, Energy | time, number | energy guaranteed by that time |
+| Fast - Limit | select | none / cost / energy / duration |
+| Fast - Limit cost, duration, energy | number | value of the limit; duration in minutes |
+| Fast - Start | select | now / at time / every day |
+| Fast - Start at | time | time of a scheduled start |
+| General - Authorization mode | select | APP/RFID / RFID / Plug & Charge |
+| General - LCD display | switch | off = screen turns off automatically |
+| General - Load balancing | switch | keeps the home's grid draw under the set limit |
+| General - Max current | number | 6-32 A |
+| General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |
+| Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
+| PV Linkage - Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
+
+### Diagnostic
+| Entity | Type | Notes |
+|---|---|---|
+| Error code, Vendor error code | sensor | |
+| Grid sampling device, Meter type | sensor | CT or meter used by PV Linkage and load balancing |
+| IP address | sensor, disabled by default | |
+| Online | binary sensor | off when the status is Unavailable or not a known status |
 
 ### Charge modes
 - **Fast**: charges at maximum power, from PV or grid. Can stop at a limit and start at a time
@@ -78,15 +96,21 @@ Switching mode from Home Assistant turns Boost off, and PV Linkage then starts w
 import (set *PV Linkage - Grid import power* afterwards). PV Linkage needs a grid sampling
 device (CT or meter) set on the charger.
 
+**General** settings apply in every mode. Load balancing matters whenever the charger draws
+from the grid: in Fast and Off-peak, and in PV Linkage with grid import or Boost; with PV
+surplus only it has nothing to limit.
+
 ### Scheduled charging (Fast)
-Pick a **Charge limit** (none, cost, energy or duration) and its value, a **Start** (now, at
-time, every day) and a **Start time**, then press **Start scheduled charge**. A start at a time
-becomes a reservation on the charger, shown in **Next reservation** and removed with
-**Cancel reservation**. A start time already passed today is scheduled for tomorrow. Cost and
-energy limits must be above 0; a duration limit goes from 1 minute to 23 h 59 min. These
-settings live in Home Assistant until you press the button and are kept across restarts.
-Nothing is preset: the charger does not keep these values, so they start empty (shown as
-unknown) and pressing the button with a missing value reports an error.
+Pick **Fast - Limit** (none, cost, energy or duration) and its value (**Fast - Limit cost**,
+**duration** or **energy**), **Fast - Start** (now, at time, every day) and **Fast - Start at**,
+then press **Fast - Start scheduled charge**. A start at a time becomes a scheduled start on the
+charger, shown in **Fast - Next scheduled start** and removed with **Fast - Cancel scheduled
+start**. Growatt allows one scheduled start per account at a time. A start time already passed
+today is scheduled for tomorrow. Cost and energy limits must be above 0; a duration limit goes
+from 1 minute to 23 h 59 min. These settings live in Home Assistant until you press the button
+and are kept across restarts. Nothing is preset: the charger does not keep these values, so
+they start empty (shown as unknown) and pressing the button with a missing value reports an
+error.
 
 ### Off-peak slots
 Up to 3 slots (**Off-peak - Slot n from / to**); a slot whose start equals its end, such as
@@ -99,9 +123,9 @@ set outside Home Assistant (up to 5 in total), are kept when changing the first 
 
 ### Boost
 In PV Linkage or Off-peak, **Boost** charges regardless of PV:
-- **Manual** (PV Linkage only): full power between *Boost - From* and *Boost - To*.
-- **Smart**: guarantees *Boost - Energy* by *Boost - Departure time*, using the grid if needed.
-  Off-peak always uses smart Boost.
+- **Manual** (PV Linkage only): full power between *Boost manual - From* and *To*.
+- **Smart**: guarantees *Boost smart - Energy* by *Boost smart - Departure time*, using the
+  grid if needed. Off-peak always uses smart Boost.
 
 While Boost is on, its settings show what the charger runs and changes are sent right away.
 Otherwise they start empty and must be set before turning Boost on.
@@ -123,7 +147,7 @@ data:
 `duration` limit is in minutes (at least 1). Values passed to an action are used as given and
 do not change the dashboard settings.
 
-- `growatt_thor_cloud.cancel_reservation`: cancel the scheduled starts.
+- `growatt_thor_cloud.cancel_reservation`: cancel the scheduled start.
 - `growatt_thor_cloud.set_boost`: `enabled`, `type` (manual/smart), `from`, `to`, `departure`,
   `energy`; missing values are taken from the Boost settings. The Boost entities follow what
   was sent.
@@ -131,9 +155,8 @@ do not change the dashboard settings.
 ## Polling and rate limits
 Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
-  settings and the reservation list only every 5 minutes or right after a change made from
-  Home Assistant (the reservation list also on every poll while a reservation is pending or
-  listed);
+  settings and the scheduled starts only every 5 minutes or right after a change made from
+  Home Assistant (the scheduled starts also on every poll while one exists);
 - logs in only when the session expires, one login at a time, and waits 5 minutes after a
   failed login before trying again;
 - on errors or rate limiting keeps the last values for 5 minutes and slows polling down
@@ -148,8 +171,8 @@ If Growatt rejects the login, Home Assistant asks for the password again (*Setti
 - Unofficial, undocumented API: Growatt can change it without notice.
 - Single-connector chargers only.
 - *Power* is voltage x current, exact for single-phase chargers only.
-- Scheduled starts, reservations and tariff slots use Home Assistant's time zone, which must
-  match the charger's.
+- Scheduled starts and tariff slots use Home Assistant's time zone, which must match the
+  charger's.
 - Chargers added to the account later appear after reloading the integration.
 
 ## Development

@@ -44,6 +44,15 @@ CONFIG_SWITCHES: tuple[ThorConfigSwitchDescription, ...] = (
         on_value="Disable",
         off_value="Enable",
     ),
+    # Warm-up: once the EV is full, keep supplying power so it can preheat in
+    # cold weather instead of drawing on its battery.
+    ThorConfigSwitchDescription(
+        key="warm_up",
+        entity_category=EntityCategory.CONFIG,
+        config_key="G_FullContinueChargeEnable",
+        on_value="Enable",
+        off_value="Disable",
+    ),
 )
 
 

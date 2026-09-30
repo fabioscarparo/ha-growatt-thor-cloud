@@ -125,9 +125,9 @@ async def test_restore_staged_values(hass: HomeAssistant, mock_api) -> None:
     mock_restore_cache_with_extra_data(
         hass,
         [
-            (State(f"select.{prefix}_fast_charge_limit", "cost"), {}),
-            (State(f"time.{prefix}_fast_start_time", "06:30:00"), {"plan_value": "06:30:00"}),
-            (State(f"number.{prefix}_fast_cost_limit", "4.5"), {"plan_value": "4.5"}),
+            (State(f"select.{prefix}_fast_limit", "cost"), {}),
+            (State(f"time.{prefix}_fast_start_at", "06:30:00"), {"plan_value": "06:30:00"}),
+            (State(f"number.{prefix}_fast_limit_cost", "4.5"), {"plan_value": "4.5"}),
         ],
     )
     await setup_integration(hass)
@@ -143,11 +143,11 @@ async def test_old_invented_values_are_dropped(hass: HomeAssistant, mock_api) ->
         hass,
         [
             (
-                State(f"number.{prefix}_fast_energy_limit", "10.0"),
+                State(f"number.{prefix}_fast_limit_energy", "10.0"),
                 {"native_value": 10.0, "native_min_value": 0.5, "native_max_value": 200,
                  "native_step": 0.5, "native_unit_of_measurement": "kWh"},
             ),
-            (State(f"time.{prefix}_fast_start_time", "22:00:00"), {}),
+            (State(f"time.{prefix}_fast_start_at", "22:00:00"), {}),
         ],
     )
     await setup_integration(hass)

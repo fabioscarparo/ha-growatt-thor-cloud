@@ -38,7 +38,7 @@
     },
     "number": {
       "max_current": {
-        "name": "Max current"
+        "name": "General - Max current"
       },
       "solar_limit_power": {
         "name": "Advanced - ECO grid limit"
@@ -47,16 +47,16 @@
         "name": "PV Linkage - Grid import power"
       },
       "limit_cost": {
-        "name": "Fast - Cost limit"
+        "name": "Fast - Limit cost"
       },
       "limit_energy": {
-        "name": "Fast - Energy limit"
+        "name": "Fast - Limit energy"
       },
       "limit_duration": {
-        "name": "Fast - Duration limit"
+        "name": "Fast - Limit duration"
       },
       "boost_energy": {
-        "name": "Boost - Energy"
+        "name": "Boost smart - Energy"
       }
     },
     "select": {
@@ -77,7 +77,7 @@
         }
       },
       "authorization_mode": {
-        "name": "Authorization mode",
+        "name": "General - Authorization mode",
         "state": {
           "app": "APP/RFID",
           "rfid": "RFID",
@@ -85,7 +85,7 @@
         }
       },
       "charge_limit": {
-        "name": "Fast - Charge limit",
+        "name": "Fast - Limit",
         "state": {
           "none": "None",
           "cost": "Cost",
@@ -119,7 +119,7 @@
           "suspended_ev": "Suspended by vehicle",
           "suspended_evse": "Suspended by charger",
           "finishing": "Finishing",
-          "reserved": "Reserved",
+          "reserved": "Scheduled start",
           "unavailable": "Unavailable",
           "faulted": "Faulted"
         }
@@ -134,13 +134,13 @@
         "name": "Voltage"
       },
       "session_energy": {
-        "name": "Session energy"
+        "name": "Session - Energy"
       },
       "session_duration": {
-        "name": "Session duration"
+        "name": "Session - Duration"
       },
       "session_cost": {
-        "name": "Session cost"
+        "name": "Session - Cost"
       },
       "tariff": {
         "name": "Tariff"
@@ -155,7 +155,7 @@
         "name": "IP address"
       },
       "session_limit": {
-        "name": "Session limit",
+        "name": "Session - Limit",
         "state": {
           "none": "None",
           "cost": "Cost",
@@ -164,7 +164,7 @@
         }
       },
       "next_reservation": {
-        "name": "Next reservation"
+        "name": "Fast - Next scheduled start"
       },
       "sampling_device": {
         "name": "Grid sampling device",
@@ -183,27 +183,30 @@
         "name": "Charging"
       },
       "load_balancing": {
-        "name": "Load balancing"
+        "name": "General - Load balancing"
       },
       "lcd_display": {
-        "name": "LCD display"
+        "name": "General - LCD display"
       },
       "boost": {
         "name": "Boost"
+      },
+      "warm_up": {
+        "name": "General - Warm-up"
       }
     },
     "time": {
       "start_time": {
-        "name": "Fast - Start time"
+        "name": "Fast - Start at"
       },
       "boost_from": {
-        "name": "Boost - From"
+        "name": "Boost manual - From"
       },
       "boost_to": {
-        "name": "Boost - To"
+        "name": "Boost manual - To"
       },
       "boost_departure": {
-        "name": "Boost - Departure time"
+        "name": "Boost smart - Departure time"
       },
       "off_peak_1_from": {
         "name": "Off-peak - Slot 1 from"
@@ -229,7 +232,7 @@
         "name": "Fast - Start scheduled charge"
       },
       "cancel_reservation": {
-        "name": "Fast - Cancel reservation"
+        "name": "Fast - Cancel scheduled start"
       }
     }
   },
@@ -247,7 +250,7 @@
   "services": {
     "start_charging": {
       "name": "Start charging",
-      "description": "Fast mode only: start now or at a time, optionally stopping at a cost, energy or duration limit.",
+      "description": "Fast mode only: start now or at a time (scheduled start), optionally stopping at a cost, energy or duration limit.",
       "fields": {
         "device_id": {
           "name": "Charger",
@@ -272,8 +275,8 @@
       }
     },
     "cancel_reservation": {
-      "name": "Cancel reservation",
-      "description": "Cancel the scheduled starts of the charger.",
+      "name": "Cancel scheduled start",
+      "description": "Cancel the charger's scheduled start.",
       "fields": {
         "device_id": {
           "name": "Charger",
@@ -295,7 +298,7 @@
         },
         "type": {
           "name": "Type",
-          "description": "Manual: full power in a time window. Smart: guarantee an energy by a time."
+          "description": "Manual: full power in a time window (PV Linkage only). Smart: guarantee an energy by a time."
         },
         "from": {
           "name": "From",

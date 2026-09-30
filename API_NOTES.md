@@ -30,7 +30,7 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
 |---|---|---|
 | `/ocpp/api/list` | `userId, lan` | Chargers: `chargeId` (SN), `name`, `model`, `vendor`, `connectors`, `status_<n>`, `power` (W), `unit`, `symbol`, `priceConf[]`, `G_SolarMode`, `G_SolarLimitPower` |
 | `/ocpp/charge/info` | `sn, connectorId (int), userId, lan` | Live connector data (see fields below) |
-| `/ocpp/api/ReserveNow` | `chargeId, connectorId (string), userId, lan` | Reservations of the connector (see Write) |
+| `/ocpp/api/ReserveNow` | `chargeId, connectorId (string), userId, lan` | Reservations (scheduled starts) of the connector (see Write) |
 | `/ocpp/api/configInfo` | `sn, userId, lan` | Charger settings, network info, firmware `version`, `deviceModel` |
 | `/ocpp/chargeMode` | `cmd:"select", chargeId, connectorId (int), userId` | Current charge mode |
 | `/ocpp/api/chargeRecord` | - | Charge history |
@@ -60,6 +60,8 @@ Field meanings:
 - `G_SolarLimitPower`: kW, grid import used by ECO, sent as float.
 - `G_ExternalLimitPowerEnable`: 0 = off, 1 = on (sent as int).
 - `G_LCDCloseEnable`: `"Enable"` = screen turns off automatically, `"Disable"` = always on.
+- `G_FullContinueChargeEnable` (warm-up): `"Enable"` = once the EV is full, keep supplying
+  power so it can preheat in cold weather; `"Disable"` = off.
 - `chargeMode.mode`: `fast`, `offPeak`, `pvLinkage` (the charger's working mode). Other
   fields: `boost` (0/1), `boostType` (`manual`/`smart`), `config` (Boost settings, see below),
   `importGrid` (kW), `G_PeriodTime` (off-peak slots).
@@ -79,7 +81,8 @@ Field meanings:
 - Unlock: `POST /ocpp/api/` `{"cmd":"unlock","chargeId","connectorId","userId","lan"}`.
 - Settings: `POST /ocpp/api/config` `{"chargeId","userId","lan","<key>": value}` with keys like
   `G_MaxCurrent`, `G_ChargerMode`, `G_SolarMode`, `G_SolarLimitPower`, `G_ExternalLimitPower`,
-  `G_ExternalLimitPowerEnable`, `G_PeakValleyEnable`, `G_AutoChargeTime`, `G_LCDCloseEnable`.
+  `G_ExternalLimitPowerEnable`, `G_PeakValleyEnable`, `G_AutoChargeTime`, `G_LCDCloseEnable`,
+  `G_FullContinueChargeEnable`.
 - Limited and scheduled starts belong to Fast mode.
 - Start with a limit: add `"cKey"` + `"cValue"` (string) to `remoteStartTransaction`. Keys:
   `G_SetAmount` (cost, currency, above 0), `G_SetEnergy` (kWh, above 0), `G_SetTime` (duration
@@ -89,7 +92,8 @@ Field meanings:
   "loopType","loopValue","userId","lan"}` plus optional `cKey`/`cValue`.
   `expiryDate` = `"YYYY-MM-DDTHH:MM:00.000Z"` in local time (the `Z` is literal, not UTC),
   `loopType` 0 = every day, -1 = once, `loopValue` = `"HH:MM"`. The integration uses the next
-  occurrence of the time (tomorrow if already passed today).
+  occurrence of the time (tomorrow if already passed today). One scheduled start per account
+  at a time.
 - Reservations: `/ocpp/api/ReserveNow` returns `data[]` with `reservationId`, `expiryDate`,
   `loopType`, `loopValue`, `cKey`, `cValue`, `cValue2` (value to display), `connectorId`,
   `status`, `rate`, `cost`.
