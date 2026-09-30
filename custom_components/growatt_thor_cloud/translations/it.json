@@ -56,7 +56,7 @@
         "name": "Fast - Limite durata"
       },
       "boost_energy": {
-        "name": "Incremento smart - Energia"
+        "name": "Boost smart - Energia"
       }
     },
     "select": {
@@ -102,7 +102,7 @@
         }
       },
       "boost_type": {
-        "name": "Incremento - Tipo",
+        "name": "Boost - Tipo",
         "state": {
           "manual": "Manuale",
           "smart": "Smart"
@@ -189,7 +189,7 @@
         "name": "Generale - Display LCD"
       },
       "boost": {
-        "name": "Incremento"
+        "name": "Boost"
       },
       "warm_up": {
         "name": "Generale - Warm-up"
@@ -200,13 +200,13 @@
         "name": "Fast - Avvio alle"
       },
       "boost_from": {
-        "name": "Incremento manuale - Inizio"
+        "name": "Boost manuale - Inizio"
       },
       "boost_to": {
-        "name": "Incremento manuale - Termine"
+        "name": "Boost manuale - Termine"
       },
       "boost_departure": {
-        "name": "Incremento smart - Orario di partenza"
+        "name": "Boost smart - Orario di partenza"
       },
       "off_peak_1_from": {
         "name": "Off-peak - Fascia 1 inizio"
@@ -285,8 +285,8 @@
       }
     },
     "set_boost": {
-      "name": "Imposta Incremento",
-      "description": "Attiva o disattiva l'Incremento (Boost) in modalità PV Linkage o Off-peak.",
+      "name": "Imposta Boost",
+      "description": "Attiva o disattiva il Boost in modalità PV Linkage o Off-peak.",
       "fields": {
         "device_id": {
           "name": "Colonnina",
@@ -294,7 +294,7 @@
         },
         "enabled": {
           "name": "Attivo",
-          "description": "Attiva o disattiva l'Incremento."
+          "description": "Attiva o disattiva il Boost."
         },
         "type": {
           "name": "Tipo",
@@ -302,19 +302,19 @@
         },
         "from": {
           "name": "Dalle",
-          "description": "Incremento manuale: inizio della fascia."
+          "description": "Boost manuale: inizio della fascia."
         },
         "to": {
           "name": "Alle",
-          "description": "Incremento manuale: termine della fascia."
+          "description": "Boost manuale: termine della fascia."
         },
         "departure": {
           "name": "Orario di partenza",
-          "description": "Incremento smart: energia disponibile entro questo orario."
+          "description": "Boost smart: energia disponibile entro questo orario."
         },
         "energy": {
           "name": "Energia",
-          "description": "Incremento smart: energia da garantire."
+          "description": "Boost smart: energia da garantire."
         }
       }
     }

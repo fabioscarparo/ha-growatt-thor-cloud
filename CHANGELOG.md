@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+### Changed
+- In Italian, Boost is shown as "Boost" again (it was "Incremento" in 0.5.0).
+
 ## 0.5.0
 ### New
 - *General - Warm-up*: once the EV is full, the charger keeps supplying power so it can

@@ -33,7 +33,6 @@ Home Assistant lists a device's entities alphabetically within each section, so 
 group prefix: **General - ...** (every mode), **Fast - ...**, **PV Linkage - ...**,
 **Off-peak - ...**, **Boost ...** (PV Linkage and Off-peak), **Session - ...** and
 **Advanced - ...**. Commands that do not apply to the current mode are shown as unavailable.
-In Italian, Boost is shown as *Incremento*.
 
 ### Controls
 | Entity | Type | Notes |
