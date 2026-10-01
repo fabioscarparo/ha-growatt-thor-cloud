@@ -2,6 +2,7 @@
 
 Every call is a JSON POST carrying `userId` and `lan`; the server answers
 `{"code": 0, "data": ...}` on success and `code: 501` once the token expires.
+Commands (/ocpp/cmd/) report their result in `type` instead.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ USER_AGENT = "MyApp/8.5.6.0 ShinePhone"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 CODE_OK = 0
 CODE_NOT_LOGGED_IN = 501
+# OCPP commands: start, stop and scheduled start.
+CMD_PATH = "/ocpp/cmd/"
 # After a failed login, wait before trying again: Growatt's servers are known to
 # rate limit repeated logins.
 LOGIN_COOLDOWN = 300  # s
@@ -42,6 +45,15 @@ class GrowattThorAuthError(GrowattThorError):
 
 class GrowattThorApiError(GrowattThorError):
     """The API could not be reached or returned an error; worth retrying later."""
+
+
+def _result(path: str, data: dict[str, Any]) -> int | None:
+    """Result code of a reply: `type` for commands when present, `code` otherwise."""
+    raw = data["type"] if path == CMD_PATH and "type" in data else data.get("code")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def hash_password(password: str) -> str:
@@ -107,6 +119,11 @@ class GrowattThorApi:
         payload = {"cmd": "select", "chargeId": sn, "connectorId": connector_id}
         return (await self._call("/ocpp/chargeMode", payload)).get("data") or {}
 
+    async def async_get_sessions(self, sn: str, count: int) -> list[dict[str, Any]]:
+        """The charger's latest sessions from its charge history, newest first."""
+        payload = {"sn": sn, "page": 1, "psize": count}
+        return (await self._call("/ocpp/api/chargeRecord", payload)).get("data") or []
+
     # --- Write ------------------------------------------------------------
 
     async def async_set_config(self, sn: str, key: str, value: Any) -> None:
@@ -144,7 +161,7 @@ class GrowattThorApi:
                 # A duration start also carries it as "h:m" (not zero-padded).
                 minutes = int(float(limit_value or 0))
                 payload |= {"loopType": -1, "loopValue": f"{minutes // 60}:{minutes % 60}"}
-        await self._call("/ocpp/cmd/", payload)
+        await self._call(CMD_PATH, payload)
 
     async def async_reserve_charging(
         self,
@@ -167,7 +184,7 @@ class GrowattThorApi:
         }
         if limit_key:
             payload |= {"cKey": limit_key, "cValue": limit_value}
-        await self._call("/ocpp/cmd/", payload)
+        await self._call(CMD_PATH, payload)
 
     async def async_cancel_reservation(self, sn: str, reservation: dict[str, Any]) -> None:
         """Delete a reservation, echoing it back as returned by async_get_reservations."""
@@ -190,13 +207,20 @@ class GrowattThorApi:
     ) -> None:
         """Send an OCPP RemoteStopTransaction for the running transaction."""
         await self._call(
-            "/ocpp/cmd/",
+            CMD_PATH,
             {
                 "action": "remoteStopTransaction",
                 "chargeId": sn,
                 "connectorId": str(connector_id),
                 "transactionId": transaction_id,
             },
+        )
+
+    async def async_unlock(self, sn: str, connector_id: int) -> None:
+        """Unlock the connector's electronic cable lock."""
+        await self._call(
+            "/ocpp/api/",
+            {"cmd": "unlock", "chargeId": sn, "connectorId": str(connector_id)},
         )
 
     # --- Transport --------------------------------------------------------
@@ -239,10 +263,10 @@ class GrowattThorApi:
             await self._refresh_token(None)
         used_token = self._token
         data = await self._request(path, payload)
-        if data.get("code") == CODE_NOT_LOGGED_IN:
+        if _result(path, data) == CODE_NOT_LOGGED_IN:
             await self._refresh_token(used_token)
             data = await self._request(path, payload)
-        if data.get("code") != CODE_OK:
+        if _result(path, data) != CODE_OK:
             raise GrowattThorApiError(f"{path} failed: {data.get('data')}")
         return data
 

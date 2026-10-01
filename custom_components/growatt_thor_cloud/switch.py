@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,13 +10,22 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import GrowattThorError
-from .const import ACTIVE_STATES, CONNECTOR_ID
-from .coordinator import GrowattThorConfigEntry
-from .entity import ThorEntity
-from .schedule import BOOST_MODES, async_set_boost, effective_plan, ha_errors, is_boost_on
+from .charge_mode import MODE_PV_LINKAGE
+from .const import ACTIVE_STATES, CONNECTOR_ID, DOMAIN
+from .coordinator import GrowattThorConfigEntry, ThorCharger
+from .entity import ThorEntity, check_owner
+from .schedule import (
+    BOOST_MODES,
+    async_set_boost,
+    check_remote_control,
+    effective_plan,
+    ha_errors,
+    is_boost_on,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -23,26 +33,47 @@ class ThorConfigSwitchDescription(SwitchEntityDescription):
     """A charger setting exposed as a switch."""
 
     config_key: str
-    on_value: Any  # Wire value meaning "on" (compared as string when reading).
+    on_value: Any  # Wire value meaning "on" (compared as text when reading).
     off_value: Any
+    # When set, the switch is available only while this returns True.
+    available_fn: Callable[[ThorCharger], bool] | None = None
+    # When set, the switch is created only for chargers where this returns True.
+    supported_fn: Callable[[ThorCharger], bool] | None = None
 
 
 CONFIG_SWITCHES: tuple[ThorConfigSwitchDescription, ...] = (
-    # Dynamic load balancing against the external meter.
+    # Dynamic load balancing against the external meter; not used in PV Linkage.
     ThorConfigSwitchDescription(
         key="load_balancing",
         entity_category=EntityCategory.CONFIG,
         config_key="G_ExternalLimitPowerEnable",
         on_value=1,
         off_value=0,
+        available_fn=lambda c: (
+            c.supports("isSupportLoadBalancing")
+            and c.charge_mode.get("mode") != MODE_PV_LINKAGE
+        ),
     ),
+    # Installer setting, disabled by default: unlock the cable at the charger once
+    # it is unplugged from the EV.
+    ThorConfigSwitchDescription(
+        key="auto_unlock",
+        entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
+        config_key="UnlockConnectorOnEVSideDisconnect",
+        on_value="true",
+        off_value="false",
+    ),
+    # Installer setting, disabled by default, on models with a display only.
     # G_LCDCloseEnable turns on automatic screen-off, so "Disable" = display on.
     ThorConfigSwitchDescription(
         key="lcd_display",
         entity_category=EntityCategory.CONFIG,
+        entity_registry_enabled_default=False,
         config_key="G_LCDCloseEnable",
         on_value="Disable",
         off_value="Enable",
+        supported_fn=lambda c: c.supports("isSupport_LCDEnable"),
     ),
     # Warm-up: once the EV is full, keep supplying power so it can preheat in
     # cold weather instead of drawing on its battery.
@@ -61,20 +92,29 @@ async def async_setup_entry(
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Per charger: charging, Boost and one switch per boolean setting."""
+    """Per charger: charging, Boost and one switch per boolean setting it supports."""
     coordinator = entry.runtime_data
+    registry = er.async_get(hass)
     entities: list[SwitchEntity] = []
-    for sn in coordinator.data:
+    for sn, charger in coordinator.data.items():
         entities.append(ThorChargingSwitch(coordinator, sn))
         entities.append(ThorBoostSwitch(coordinator, sn))
-        entities.extend(
-            ThorConfigSwitch(coordinator, sn, description) for description in CONFIG_SWITCHES
-        )
+        for description in CONFIG_SWITCHES:
+            if description.supported_fn is None or description.supported_fn(charger):
+                entities.append(ThorConfigSwitch(coordinator, sn, description))
+            elif entity_id := registry.async_get_entity_id(
+                "switch", DOMAIN, f"{sn}_{description.key}"
+            ):
+                # Created for every model by older versions: drop it where unsupported.
+                registry.async_remove(entity_id)
     async_add_entities(entities)
 
 
 class ThorChargingSwitch(ThorEntity, SwitchEntity):
-    """On while an OCPP transaction is running; toggling sends remote start/stop."""
+    """On while an OCPP transaction is running; toggling sends remote start/stop.
+
+    In RFID mode sessions start and stop with a card only: toggling is refused.
+    """
 
     def __init__(self, coordinator, sn: str) -> None:
         super().__init__(coordinator, sn, "charging")
@@ -85,6 +125,8 @@ class ThorChargingSwitch(ThorEntity, SwitchEntity):
         return self.charger.connector.get("status") in ACTIVE_STATES
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        with ha_errors("Could not start charging"):
+            check_remote_control(self.charger)
         try:
             await self.coordinator.api.async_start_charging(self._sn, CONNECTOR_ID)
         except GrowattThorError as err:
@@ -93,6 +135,8 @@ class ThorChargingSwitch(ThorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        with ha_errors("Could not stop charging"):
+            check_remote_control(self.charger)
         # RemoteStopTransaction needs the id of the running transaction; 0 means none.
         transaction_id = str(self.charger.connector.get("transactionId") or "")
         if transaction_id in ("", "0"):
@@ -118,12 +162,17 @@ class ThorConfigSwitch(ThorEntity, SwitchEntity):
         self.entity_description = description
 
     @property
+    def available(self) -> bool:
+        available_fn = self.entity_description.available_fn
+        return super().available and (available_fn is None or available_fn(self.charger))
+
+    @property
     def is_on(self) -> bool | None:
         raw = self.charger.config.get(self.entity_description.config_key)
         if raw is None:
             return None
-        # The API may return the same setting as int or string.
-        return str(raw) == str(self.entity_description.on_value)
+        # The API may return the same setting as int, string or boolean.
+        return str(raw).lower() == str(self.entity_description.on_value).lower()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._async_set(self.entity_description.on_value)
@@ -133,6 +182,7 @@ class ThorConfigSwitch(ThorEntity, SwitchEntity):
 
     async def _async_set(self, value: Any) -> None:
         """Write the setting, show it right away, then confirm with a refresh."""
+        check_owner(self.charger)
         key = self.entity_description.config_key
         try:
             await self.coordinator.api.async_set_config(self._sn, key, value)

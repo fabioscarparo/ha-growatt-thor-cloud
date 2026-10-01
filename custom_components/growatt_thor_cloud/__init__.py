@@ -6,13 +6,13 @@ from datetime import timedelta
 
 from homeassistant.const import CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import GrowattThorApi
 from .const import CONF_PASSWORD_HASH, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
-from .coordinator import GrowattThorConfigEntry, GrowattThorCoordinator
+from .coordinator import GrowattThorConfigEntry, GrowattThorCoordinator, clock_issue_id
 from .services import async_setup_services
 
 PLATFORMS = [
@@ -52,8 +52,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: GrowattThorConfigEntry) 
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: GrowattThorConfigEntry) -> bool:
-    """Unload all platforms."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    """Unload all platforms and withdraw this entry's clock warnings."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        for sn in entry.runtime_data.data or {}:
+            ir.async_delete_issue(hass, DOMAIN, clock_issue_id(sn))
+    return unloaded
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: GrowattThorConfigEntry) -> None:

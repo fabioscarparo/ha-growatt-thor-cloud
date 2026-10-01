@@ -20,7 +20,7 @@
     "error": {
       "invalid_auth": "Invalid username or password.",
       "cannot_connect": "Cannot reach the Growatt charger service.",
-      "no_chargers": "No EV charger found on this account."
+      "no_chargers": "No EV charger found on this account. Check the username."
     },
     "abort": {
       "already_configured": "This account is already configured.",
@@ -163,6 +163,26 @@
           "duration": "Duration"
         }
       },
+      "session_progress": {
+        "name": "Session - Progress"
+      },
+      "last_session": {
+        "name": "Session - Last charge",
+        "state_attributes": {
+          "start": {
+            "name": "Start"
+          },
+          "duration": {
+            "name": "Duration (min)"
+          },
+          "energy": {
+            "name": "Energy (kWh)"
+          },
+          "cost": {
+            "name": "Cost"
+          }
+        }
+      },
       "next_reservation": {
         "name": "Fast - Next scheduled start"
       },
@@ -175,7 +195,40 @@
         }
       },
       "meter_type": {
-        "name": "Meter type"
+        "name": "Meter type",
+        "state_attributes": {
+          "address": {
+            "name": "Address"
+          }
+        }
+      },
+      "network_connection": {
+        "name": "Network connection",
+        "state": {
+          "wifi": "Wi-Fi",
+          "cable": "Cable"
+        }
+      },
+      "network_mode": {
+        "name": "Network mode",
+        "state": {
+          "dhcp": "DHCP",
+          "static": "Static"
+        }
+      },
+      "time_zone": {
+        "name": "Time zone",
+        "state_attributes": {
+          "daylight_saving_start": {
+            "name": "Daylight saving start"
+          },
+          "daylight_saving_end": {
+            "name": "Daylight saving end"
+          }
+        }
+      },
+      "protection_temperature": {
+        "name": "Protection temperature"
       }
     },
     "switch": {
@@ -185,8 +238,11 @@
       "load_balancing": {
         "name": "General - Load balancing"
       },
+      "auto_unlock": {
+        "name": "Advanced - Auto unlock connector"
+      },
       "lcd_display": {
-        "name": "General - LCD display"
+        "name": "Advanced - LCD display"
       },
       "boost": {
         "name": "Boost"
@@ -233,7 +289,16 @@
       },
       "cancel_reservation": {
         "name": "Fast - Cancel scheduled start"
+      },
+      "unlock": {
+        "name": "Unlock connector"
       }
+    }
+  },
+  "issues": {
+    "time_zone_mismatch": {
+      "title": "{name}: the charger's clock is off",
+      "description": "The charger keeps time at UTC{charger_offset} (time zone {zone}), while Home Assistant is at UTC{ha_offset}. Off-peak slots, Boost windows and scheduled starts run on the charger's clock, so they would start at the wrong time.\n\nSet the charger's time zone and daylight saving period in its Growatt settings (Basic information). The daylight saving dates cover one year at a time."
     }
   },
   "options": {
@@ -250,7 +315,7 @@
   "services": {
     "start_charging": {
       "name": "Start charging",
-      "description": "Fast mode only: start now or at a time (scheduled start), optionally stopping at a cost, energy or duration limit.",
+      "description": "Fast mode only, outside a session: start now or at a time (scheduled start), optionally stopping at a cost, energy or duration limit. In RFID mode only a start at a time is accepted.",
       "fields": {
         "device_id": {
           "name": "Charger",
@@ -286,7 +351,7 @@
     },
     "set_boost": {
       "name": "Set Boost",
-      "description": "Turn Boost on or off in PV Linkage or Off-peak mode.",
+      "description": "Turn Boost on or off in PV Linkage or Off-peak mode, outside a session.",
       "fields": {
         "device_id": {
           "name": "Charger",

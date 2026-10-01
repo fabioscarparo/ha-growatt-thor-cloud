@@ -18,6 +18,7 @@ from custom_components.growatt_thor_cloud.const import DEFAULT_BASE_URL
 
 LOGIN_URL = f"{DEFAULT_BASE_URL}/ocpp/user"
 CONFIG_URL = f"{DEFAULT_BASE_URL}/ocpp/api/configInfo"
+CMD_URL = f"{DEFAULT_BASE_URL}/ocpp/cmd/"
 
 
 def test_hash_password() -> None:
@@ -167,3 +168,51 @@ async def test_schedule_payloads(hass, aioclient_mock) -> None:
     await api.async_cancel_reservation("SN1", reservation)
     sent = aioclient_mock.mock_calls[-1][2]
     assert (sent["ctype"], sent["sn"], sent["reservationId"]) == ("2", "SN1", 7)
+
+
+async def test_command_result_in_type(hass, aioclient_mock) -> None:
+    """Commands report their result in "type", with or without "code"."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(CMD_URL, json={"type": 0, "data": "Command sent"})
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+    await api.async_start_charging("SN1", 1)  # No "code": still a success.
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(CMD_URL, json={"code": 0, "type": 1, "data": "Rejected"})
+    with pytest.raises(GrowattThorApiError, match="Rejected"):
+        await api.async_stop_charging("SN1", 1, "5")
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(CMD_URL, json={"type": 501, "data": "Not logged in"})
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t2"})
+    with pytest.raises(GrowattThorApiError):
+        await api.async_start_charging("SN1", 1)
+    assert [call[1].path for call in aioclient_mock.mock_calls] == [
+        "/ocpp/cmd/",
+        "/ocpp/user",
+        "/ocpp/cmd/",
+    ]
+
+
+async def test_type_ignored_outside_commands(hass, aioclient_mock) -> None:
+    """Other endpoints answer with "code"; a "type" field there means nothing."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(CONFIG_URL, json={"code": 0, "type": 1, "data": {"G_MaxCurrent": 16}})
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+    assert await api.async_get_config("SN1") == {"G_MaxCurrent": 16}
+
+
+async def test_unlock_payload(hass, aioclient_mock) -> None:
+    """Unlock is a /ocpp/api/ command with a string connector id."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(f"{DEFAULT_BASE_URL}/ocpp/api/", json={"code": 0, "data": "ok"})
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+
+    await api.async_unlock("SN1", 1)
+    assert aioclient_mock.mock_calls[-1][2] == {
+        "userId": "SHINEuser",
+        "lan": 1,
+        "cmd": "unlock",
+        "chargeId": "SN1",
+        "connectorId": "1",
+    }

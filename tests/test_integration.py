@@ -9,13 +9,23 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growatt_thor_cloud.api import GrowattThorAuthError, hash_password
 from custom_components.growatt_thor_cloud.const import CONF_PASSWORD_HASH, DOMAIN
 from custom_components.growatt_thor_cloud.sensor import _in_slot
 
-from .common import call as _call, enable as _enable, setup_integration, state as _state
+from .common import (
+    call as _call,
+    enable as _enable,
+    set_charge_mode,
+    set_charging,
+    set_config,
+    set_connector,
+    setup_integration,
+    state as _state,
+)
 from .conftest import CHARGE_MODE, CONFIG, SN
 
 
@@ -55,6 +65,7 @@ async def test_user_flow_errors(hass: HomeAssistant, mock_api) -> None:
 
 async def test_entities(hass: HomeAssistant, mock_api) -> None:
     """API payloads map to the expected entity states and units."""
+    set_charging(mock_api)
     await setup_integration(hass)
 
     def state(domain: str, key: str) -> str:
@@ -66,29 +77,66 @@ async def test_entities(hass: HomeAssistant, mock_api) -> None:
     assert _state(hass, "sensor", "session_cost").attributes["unit_of_measurement"] == "EUR"
     assert _state(hass, "sensor", "tariff").attributes["unit_of_measurement"] == "EUR/kWh"
     assert state("sensor", "tariff") == "0.21"  # From priceConf, not the session rate.
+    assert state("sensor", "session_progress") == "unknown"  # No limit, no Boost.
     assert state("binary_sensor", "online") == "on"
     assert state("binary_sensor", "cable_lock") == "off"  # locked
     assert state("switch", "charging") == "on"
-    assert state("switch", "load_balancing") == "off"
-    assert state("switch", "lcd_display") == "on"
+    assert state("switch", "load_balancing") == "unavailable"  # Not used in PV Linkage.
     assert state("switch", "warm_up") == "off"
+    assert state("button", "unlock") == "unavailable"  # Not while charging.
     assert state("number", "max_current") == "32.0"
     assert state("number", "import_grid_power") == "0.0"
     assert _state(hass, "number", "import_grid_power").attributes["max"] == 7.0
     assert state("select", "charge_mode") == "pv_linkage"
+    assert _state(hass, "select", "charge_mode").attributes["options"] == [
+        "fast",
+        "pv_linkage",
+        "off_peak",
+    ]
     assert state("select", "authorization_mode") == "plug_and_charge"
-    # Low-level settings and the IP are registered but disabled by default.
+    assert state("sensor", "last_session") == "unknown"  # No session in the history.
+    # Low-level and installer settings and the IP are registered but disabled by default.
     for domain, key in (
         ("sensor", "ip_address"),
         ("select", "solar_mode"),
         ("number", "solar_limit_power"),
+        ("switch", "lcd_display"),
+        ("switch", "auto_unlock"),
     ):
         assert _state(hass, domain, key) is None
 
 
+async def test_diagnostics(hass: HomeAssistant, mock_api) -> None:
+    """Network, clock and protection settings are exposed as diagnostics."""
+    await setup_integration(hass)
+    assert _state(hass, "sensor", "network_mode").state == "static"
+    assert _state(hass, "sensor", "network_connection").state == "unknown"  # Not reported.
+    assert _state(hass, "sensor", "protection_temperature").state == "80.0"
+    assert _state(hass, "sensor", "meter_type").attributes["address"] == 1
+    time_zone = _state(hass, "sensor", "time_zone")
+    assert time_zone.state == "UTC+2"
+    assert time_zone.attributes["daylight_saving_start"] is None
+
+
+async def test_daylight_saving_dates(hass: HomeAssistant, mock_api) -> None:
+    """The daylight saving period shows as month-day pairs."""
+    set_config(mock_api, sysTimeZone="UTC+1", G_DaylightSavingTime="03-29&10-25", G_NetType="wifi")
+    await setup_integration(hass)
+    time_zone = _state(hass, "sensor", "time_zone")
+    assert time_zone.state == "UTC+1"
+    assert time_zone.attributes["daylight_saving_start"] == "03-29"
+    assert time_zone.attributes["daylight_saving_end"] == "10-25"
+    assert _state(hass, "sensor", "network_connection").state == "wifi"
+
+
 async def test_controls(hass: HomeAssistant, mock_api) -> None:
     """Every control sends the right command in the right wire format."""
-    await setup_integration(hass)
+    set_charging(mock_api)
+    set_charge_mode(mock_api, mode="fast")
+    entry = await setup_integration(hass)
+    await _enable(hass, entry, ("switch", "lcd_display"), ("switch", "auto_unlock"))
+    assert _state(hass, "switch", "lcd_display").state == "on"
+    assert _state(hass, "switch", "auto_unlock").state == "on"
 
     await _call(hass, "switch", "turn_off", "charging")
     mock_api.async_stop_charging.assert_awaited_once_with(SN, 1, "1234")
@@ -96,6 +144,7 @@ async def test_controls(hass: HomeAssistant, mock_api) -> None:
     await _call(hass, "switch", "turn_on", "charging")
     mock_api.async_start_charging.assert_awaited_once_with(SN, 1)
 
+    # General settings can change during a session.
     await _call(hass, "number", "set_value", "max_current", value=16)
     mock_api.async_set_config.assert_awaited_with(SN, "G_MaxCurrent", "16")
 
@@ -107,6 +156,45 @@ async def test_controls(hass: HomeAssistant, mock_api) -> None:
 
     await _call(hass, "switch", "turn_on", "warm_up")
     mock_api.async_set_config.assert_awaited_with(SN, "G_FullContinueChargeEnable", "Enable")
+
+    await _call(hass, "switch", "turn_off", "auto_unlock")
+    mock_api.async_set_config.assert_awaited_with(
+        SN, "UnlockConnectorOnEVSideDisconnect", "false"
+    )
+
+
+async def test_unlock(hass: HomeAssistant, mock_api) -> None:
+    """The connector can be unlocked while no charge is in progress."""
+    set_connector(mock_api, status="Finishing", elockstate="locked")
+    await setup_integration(hass)
+    await _call(hass, "button", "press", "unlock")
+    mock_api.async_unlock.assert_awaited_once_with(SN, 1)
+
+
+async def test_session_progress(hass: HomeAssistant, mock_api) -> None:
+    """Progress towards the session limit, capped at 100 %."""
+    set_charging(mock_api, cKey="G_SetEnergy", cValue="10")
+    entry = await setup_integration(hass)
+    assert _state(hass, "sensor", "session_progress").state == "35.0"
+
+    set_charging(mock_api, cKey="G_SetTime", cValue="30")  # 42 of 30 minutes.
+    await entry.runtime_data.async_refresh()
+    assert _state(hass, "sensor", "session_progress").state == "100.0"
+
+
+async def test_session_progress_smart_boost(hass: HomeAssistant, mock_api) -> None:
+    """With smart Boost on, progress is the session energy against the Boost energy."""
+    set_charging(mock_api)
+    set_charge_mode(mock_api, boost=1, boostType="smart", config="contime=07:30&energy=7")
+    await setup_integration(hass)
+    assert _state(hass, "sensor", "session_progress").state == "50.0"
+
+
+async def test_session_progress_needs_a_session(hass: HomeAssistant, mock_api) -> None:
+    """Outside a session there is nothing to measure."""
+    set_connector(mock_api, cKey="G_SetEnergy", cValue="10")  # Idle.
+    await setup_integration(hass)
+    assert _state(hass, "sensor", "session_progress").state == "unknown"
 
 
 async def test_hidden_settings(hass: HomeAssistant, mock_api) -> None:
@@ -213,3 +301,67 @@ def test_tariff_slots() -> None:
     assert _in_slot("22:00-08:00", "07:00")
     assert not _in_slot("22:00-08:00", "12:00")
     assert not _in_slot("", "12:00")
+
+
+# Anonymised from a real charge history entry.
+SESSION = {
+    "chargeId": SN,
+    "connectorId": 1,
+    "starttime": "2026-07-18 12:45:40",
+    "endtime": "2026-07-18 12:59:15",
+    "sysStartTime": 1784349940000,
+    "sysEndTime": 1784350755000,
+    "ctime": 13,
+    "energy": 0.733,
+    "cost": 0.11,
+    "chargemode": "3",
+}
+
+
+async def test_last_session(hass: HomeAssistant, mock_api) -> None:
+    """The last ended session stays visible after the live session values reset."""
+    mock_api.async_get_sessions.side_effect = lambda sn, count: [dict(SESSION)]
+    await setup_integration(hass)
+    sensor = _state(hass, "sensor", "last_session")
+    assert sensor.state == "2026-07-18T10:59:15+00:00"
+    assert sensor.attributes["start"].isoformat() == "2026-07-18T10:45:40+00:00"
+    assert (
+        sensor.attributes["duration"],
+        sensor.attributes["energy"],
+        sensor.attributes["cost"],
+    ) == (13, 0.733, 0.11)
+
+
+async def test_last_session_read_when_charging_ends(hass: HomeAssistant, mock_api) -> None:
+    """The history is read with the settings, and again as soon as a session ends."""
+    set_charging(mock_api)
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    assert mock_api.async_get_sessions.await_count == 1
+
+    await coordinator.async_refresh()  # Still charging: not read again.
+    assert mock_api.async_get_sessions.await_count == 1
+
+    mock_api.async_get_sessions.side_effect = lambda sn, count: [dict(SESSION)]
+    set_connector(mock_api, status="Finishing")
+    await coordinator.async_refresh()
+    assert mock_api.async_get_sessions.await_count == 2
+    assert _state(hass, "sensor", "last_session").state == "2026-07-18T10:59:15+00:00"
+
+
+async def test_lcd_only_with_a_display(hass: HomeAssistant, mock_api) -> None:
+    """Models without a display get no LCD switch; an older one is removed."""
+    registry = er.async_get(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="user",
+        data={CONF_USERNAME: "user", CONF_PASSWORD_HASH: "hash"},
+    )
+    entry.add_to_hass(hass)
+    old = registry.async_get_or_create(
+        "switch", DOMAIN, f"{SN}_lcd_display", config_entry=entry
+    )
+    set_config(mock_api, isSupport_LCDEnable=False)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(old.entity_id) is None

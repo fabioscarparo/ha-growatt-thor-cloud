@@ -42,23 +42,47 @@ CONFIG = {
     "power": 7000,
     "G_ExternalSamplingCurWring": 1,
     "G_PowerMeterType": "Eastron SDM230",
+    "G_PowerMeterAddr": 1,
     "priceConf": [{"price": "0.21", "time": "00:00-23:59"}],
+    "UnlockConnectorOnEVSideDisconnect": "true",
+    "sysTimeZone": "UTC+2",
+    "G_DaylightSavingTime": "00-00&00-00",
+    "G_NetType": "",
+    "G_NetworkMode": "STATIC",
+    "G_MaxTemperature": 80,
+    "isSupportPL": True,
+    "isSupportLoadBalancing": True,
+    "isSupportLowRateMode": True,
+    "isSupport_LCDEnable": True,
 }
+# Idle charger: settings and modes can be changed.
 CONNECTOR = {
     "chargeId": SN,
     "connectorId": 1,
+    "status": "Available",
+    "current": 0,
+    "voltage": 0,
+    "energy": 0,
+    "ctime": 0,
+    "cost": 0,
+    "rate": 0,  # Session rate: 0 in real responses even with a tariff set.
+    "transactionId": 0,
+    "online": 0,
+    "elockstate": "unlocked",
+    "errorCode": "NoError",
+    "vendorErrorCode": "",
+}
+# Fields of a running session, applied over CONNECTOR.
+CHARGING = {
     "status": "Charging",
     "current": 16,
     "voltage": 230,
     "energy": 3.5,
     "ctime": 42,
     "cost": 0.56,
-    "rate": 0,  # Session rate: 0 in real responses even with a tariff set.
     "transactionId": 1234,
     "online": 1,
     "elockstate": "locked",
-    "errorCode": "NoError",
-    "vendorErrorCode": "",
 }
 CHARGE_MODE = {
     "chargeId": f"{SN}_1",
@@ -92,6 +116,7 @@ def mock_api():
     api.async_get_connector.side_effect = lambda sn, cid: copy.deepcopy(CONNECTOR)
     api.async_get_reservations.side_effect = lambda sn, cid: []
     api.async_get_charge_mode.side_effect = lambda sn, cid: copy.deepcopy(CHARGE_MODE)
+    api.async_get_sessions.side_effect = lambda sn, count: []
     with (
         patch("custom_components.growatt_thor_cloud.GrowattThorApi", return_value=api),
         patch("custom_components.growatt_thor_cloud.config_flow.GrowattThorApi", return_value=api),

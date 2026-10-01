@@ -47,6 +47,11 @@ CONNECTOR_STATUS = {
 ACTIVE_STATES = ("Charging", "SuspendedEV", "SuspendedEVSE")
 # States in which a reservation is pending.
 RESERVATION_STATES = ("Accepted", "Reserved", "ReserveNow")
+# A session is open or closing: the charge mode, its settings and Fast starts
+# stay as they are until it ends.
+SESSION_STATES = (*ACTIVE_STATES, "Finishing")
+# States in which the connector can be unlocked (no charge in progress).
+UNLOCK_STATES = ("Available", "Preparing", "SuspendedEV", "Finishing", *RESERVATION_STATES)
 
 # Session limit keys (cKey): stop at a cost, an energy or a duration in minutes.
 LIMIT_COST = "G_SetAmount"

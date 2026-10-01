@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.restore_state import ExtraStoredData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -47,6 +48,12 @@ class ThorEntity(CoordinatorEntity[GrowattThorCoordinator]):
     def available(self) -> bool:
         # A charger removed from the account disappears from the next poll.
         return super().available and self._sn in self.coordinator.data
+
+
+def check_owner(charger: ThorCharger) -> None:
+    """Refuse setting changes on a charger only shared with this account."""
+    if charger.shared:
+        raise ServiceValidationError("Only the charger's owner can change its settings")
 
 
 def to_float(value: object) -> float | None:

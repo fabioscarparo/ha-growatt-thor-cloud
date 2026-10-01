@@ -2,7 +2,8 @@
 
 A mode change sends the whole mode object: Fast needs nothing else, PV Linkage
 carries the meter setup and the allowed grid import, Off-peak carries its time
-slots.
+slots. Every update (mode, Boost, grid import, slots) is built here, so the
+rules on when the mode may change live here too.
 """
 
 from __future__ import annotations
@@ -15,6 +16,29 @@ from .entity import to_float
 MODE_FAST = "fast"
 MODE_OFF_PEAK = "offPeak"
 MODE_PV_LINKAGE = "pvLinkage"
+
+
+def supported_modes(charger: ThorCharger) -> list[str]:
+    """Modes the charger offers.
+
+    Chargers reporting neither load balancing nor low-rate (off-peak) support
+    run Fast only; PV Linkage also needs isSupportPL.
+    """
+    if not (
+        charger.supports("isSupportLoadBalancing") or charger.supports("isSupportLowRateMode")
+    ):
+        return [MODE_FAST]
+    if charger.supports("isSupportPL"):
+        return [MODE_FAST, MODE_PV_LINKAGE, MODE_OFF_PEAK]
+    return [MODE_FAST, MODE_OFF_PEAK]
+
+
+def check_mode_change(charger: ThorCharger) -> None:
+    """Raise ValueError when the mode and its settings must not change now."""
+    if charger.shared:
+        raise ValueError("Only the charger's owner can change its charge mode")
+    if charger.in_session:
+        raise ValueError("Stop charging before changing the charge mode or its settings")
 
 
 def format_kw(value: object) -> str:
@@ -45,8 +69,10 @@ def charge_mode_fields(
     mode; a mode switch starts from the defaults (Boost off; PV Linkage:
     manual type, no grid import; Off-peak: smart type). Off-peak uses the
     given G_PeriodTime, else the last slots used, else the cheapest tariff
-    slots. Raises ValueError when a required value is missing.
+    slots. Raises ValueError when a required value is missing, during a
+    session and on chargers only shared with the account.
     """
+    check_mode_change(charger)
     if mode == MODE_FAST:
         return {"mode": MODE_FAST, **overrides}
 

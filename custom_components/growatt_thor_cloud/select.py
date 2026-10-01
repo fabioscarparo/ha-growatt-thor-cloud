@@ -12,10 +12,16 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .api import GrowattThorError
-from .charge_mode import MODE_FAST, MODE_OFF_PEAK, MODE_PV_LINKAGE, charge_mode_fields
+from .charge_mode import (
+    MODE_FAST,
+    MODE_OFF_PEAK,
+    MODE_PV_LINKAGE,
+    charge_mode_fields,
+    supported_modes,
+)
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
-from .entity import ThorEntity
+from .entity import ThorEntity, check_owner
 from .schedule import (
     LIVE_BOOST,
     async_update_plan,
@@ -107,12 +113,20 @@ async def async_setup_entry(
 
 
 class ThorChargeModeSelect(ThorEntity, SelectEntity):
-    """Fast / PV Linkage / Off-peak, the charger's everyday working mode."""
+    """Fast / PV Linkage / Off-peak, the charger's everyday working mode.
 
-    _attr_options = list(CHARGE_MODES)
+    Offers the modes the charger supports (plus the current one, whatever it
+    is); changes are refused while a session is open.
+    """
 
     def __init__(self, coordinator, sn: str) -> None:
         super().__init__(coordinator, sn, "charge_mode")
+
+    @property
+    def options(self) -> list[str]:
+        modes = supported_modes(self.charger)
+        current = self.charger.charge_mode.get("mode")
+        return [opt for opt, mode in CHARGE_MODES.items() if mode in modes or mode == current]
 
     @property
     def current_option(self) -> str | None:
@@ -159,6 +173,7 @@ class ThorSelect(ThorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Write the setting, show it right away, then confirm with a refresh."""
+        check_owner(self.charger)
         key = self.entity_description.config_key
         value = self.entity_description.values[option]
         try:

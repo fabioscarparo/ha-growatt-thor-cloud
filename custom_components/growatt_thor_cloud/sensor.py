@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -14,11 +14,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfPower,
+    UnitOfTemperature,
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
@@ -26,13 +28,24 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
+from .clock import charger_offset, dst_period, time_zone
 from .const import ACTIVE_STATES, CONNECTOR_STATUS
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
-from .schedule import LIMIT_TYPES, next_reservation
+from .schedule import LIMIT_TYPES, boost_params, is_boost_on, next_reservation
 
 # G_ExternalSamplingCurWring -> how the charger measures the grid.
 SAMPLING_DEVICES = {"0": "ct2000", "1": "meter", "2": "ct3000"}
+# Session limit type -> connector field measured against it.
+LIMIT_PROGRESS = {"cost": "cost", "energy": "energy", "duration": "ctime"}
+NETWORK_CONNECTIONS = ["wifi", "cable"]  # G_NetType
+NETWORK_MODES = ["dhcp", "static"]  # G_NetworkMode
+
+
+def _option(value: object, options: list[str]) -> str | None:
+    """A setting matched case-insensitively against enum options; None if unknown."""
+    text = str(value or "").lower()
+    return text if text in options else None
 
 
 def _in_slot(slot: str, now: str) -> bool:
@@ -80,6 +93,75 @@ def _session_limit_attrs(charger: ThorCharger) -> dict[str, Any]:
     if _session_limit(charger) == "none":
         return {}
     return {"value": to_float(charger.connector.get("cValue"))}
+
+
+def _progress(charger: ThorCharger) -> float | None:
+    """Share of the session's target reached, in %.
+
+    The target is the session limit (Fast) or the smart Boost energy; unknown
+    outside a session and without a target.
+    """
+    connector = charger.connector
+    if connector.get("status") not in ACTIVE_STATES:
+        return None
+    limit = LIMIT_TYPES.get(str(connector.get("cKey") or ""))
+    if limit:
+        target = to_float(connector.get("cValue"))
+        done = to_float(connector.get(LIMIT_PROGRESS[limit]))
+    elif is_boost_on(charger):
+        # Only smart Boost has an energy; a manual window has no target.
+        target = to_float(boost_params(charger).get("energy"))
+        done = to_float(connector.get("energy"))
+    else:
+        return None
+    if not target or done is None:
+        return None
+    return round(min(done / target * 100, 100.0), 1)
+
+
+def _session_time(charger: ThorCharger, key: str) -> datetime | None:
+    """A time of the last session, "YYYY-MM-DD HH:MM:SS" on the charger's clock.
+
+    The epoch fields next to it (sysStartTime / sysEndTime) read that wall-clock
+    time as UTC+8, so they are not used.
+    """
+    parsed = dt_util.parse_datetime(str(charger.last_session.get(key) or ""))
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        offset = charger_offset(charger.config, parsed.date())
+        parsed = parsed.replace(
+            tzinfo=dt_util.get_default_time_zone() if offset is None else timezone(offset)
+        )
+    return dt_util.as_utc(parsed)
+
+
+def _last_session_attrs(charger: ThorCharger) -> dict[str, Any]:
+    """Start, duration (minutes), energy (kWh) and cost of the last session."""
+    record = charger.last_session
+    if not record:
+        return {}
+    duration = to_float(record.get("ctime"))
+    return {
+        "start": _session_time(charger, "starttime"),
+        "duration": None if duration is None else int(duration),
+        "energy": to_float(record.get("energy")),
+        "cost": to_float(record.get("cost")),
+    }
+
+
+def _time_zone_attrs(charger: ThorCharger) -> dict[str, Any]:
+    """Daylight saving start and end as "MM-DD", None when not set."""
+    period = dst_period(charger.config)
+    start, end = (f"{month:02d}-{day:02d}" for month, day in period) if period else (None, None)
+    return {"daylight_saving_start": start, "daylight_saving_end": end}
+
+
+def _meter_attrs(charger: ThorCharger) -> dict[str, Any]:
+    """Bus address of the meter, when one is set up."""
+    if not charger.config.get("G_PowerMeterType"):
+        return {}
+    return {"address": charger.config.get("G_PowerMeterAddr")}
 
 
 def _next_reservation_attrs(charger: ThorCharger) -> dict[str, Any]:
@@ -174,6 +256,20 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         attrs_fn=_session_limit_attrs,
     ),
     ThorSensorDescription(
+        key="session_progress",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=0,
+        value_fn=_progress,
+    ),
+    # End of the last session; the session sensors above reset once it is over.
+    ThorSensorDescription(
+        key="last_session",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: _session_time(c, "endtime"),
+        attrs_fn=_last_session_attrs,
+    ),
+    ThorSensorDescription(
         key="next_reservation",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda c: upcoming[0] if (upcoming := next_reservation(c)) else None,
@@ -202,12 +298,42 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         key="meter_type",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.config.get("G_PowerMeterType") or None,
+        attrs_fn=_meter_attrs,
     ),
     ThorSensorDescription(
         key="ip_address",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda c: c.config.get("ip") or None,
+    ),
+    ThorSensorDescription(
+        key="network_connection",
+        device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        options=NETWORK_CONNECTIONS,
+        value_fn=lambda c: _option(c.config.get("G_NetType"), NETWORK_CONNECTIONS),
+    ),
+    ThorSensorDescription(
+        key="network_mode",
+        device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        options=NETWORK_MODES,
+        value_fn=lambda c: _option(c.config.get("G_NetworkMode"), NETWORK_MODES),
+    ),
+    # The charger's clock; it must match Home Assistant's (see clock.py).
+    ThorSensorDescription(
+        key="time_zone",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: time_zone(c.config),
+        attrs_fn=_time_zone_attrs,
+    ),
+    # Internal temperature at which the charger protects itself.
+    ThorSensorDescription(
+        key="protection_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        value_fn=lambda c: to_float(c.config.get("G_MaxTemperature")),
     ),
 )
 

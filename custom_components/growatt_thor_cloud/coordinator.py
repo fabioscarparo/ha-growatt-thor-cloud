@@ -10,11 +10,14 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import GrowattThorApi, GrowattThorApiError, GrowattThorAuthError
+from .clock import charger_offset, format_offset, time_zone
 from .const import (
+    ACTIVE_STATES,
     BACKOFF_INTERVALS,
     CONF_SCAN_INTERVAL,
     CONFIG_REFRESH_INTERVAL,
@@ -22,12 +25,22 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     RESERVATION_STATES,
+    SESSION_STATES,
     STALE_DATA_GRACE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+TIME_ZONE_HELP_URL = "https://github.com/fabioscarparo/ha-growatt-thor-cloud#time-zone"
+# Sessions read from the history: two, in case the newest one has not ended yet.
+SESSIONS_READ = 2
+
 type GrowattThorConfigEntry = ConfigEntry[GrowattThorCoordinator]
+
+
+def clock_issue_id(sn: str) -> str:
+    """Repairs issue raised while a charger's clock is off."""
+    return f"time_zone_{sn}"
 
 
 @dataclass
@@ -40,6 +53,8 @@ class ThorCharger:
     connector: dict[str, Any] = field(default_factory=dict)  # /ocpp/charge/info
     reservations: list[dict[str, Any]] = field(default_factory=list)  # /ocpp/api/ReserveNow
     charge_mode: dict[str, Any] = field(default_factory=dict)  # /ocpp/chargeMode
+    # Newest ended session of /ocpp/api/chargeRecord; the live data resets after a session.
+    last_session: dict[str, Any] = field(default_factory=dict)
 
     @property
     def price_conf(self) -> list[dict[str, Any]]:
@@ -53,6 +68,26 @@ class ThorCharger:
             return float(self.config["power"]) / 1000
         except (KeyError, TypeError, ValueError):
             return None
+
+    @property
+    def shared(self) -> bool:
+        """Shared with this account by its owner: settings and modes stay read-only."""
+        return str(self.summary.get("type")) == "1"
+
+    @property
+    def rfid_only(self) -> bool:
+        """RFID authorization: sessions start and stop with a card, not remotely."""
+        return str(self.config.get("G_ChargerMode")) == "2"
+
+    @property
+    def in_session(self) -> bool:
+        """A session is open or closing (see SESSION_STATES)."""
+        return self.connector.get("status") in SESSION_STATES
+
+    def supports(self, feature: str) -> bool:
+        """A feature flag of the settings (isSupport...); a missing flag means supported."""
+        value = self.config.get(feature)
+        return value is None or str(value).lower() in ("true", "1")
 
 
 @dataclass
@@ -157,7 +192,40 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self._failures = 0
         self.update_interval = self._base_interval
         self._last_success = dt_util.utcnow()
+        self._check_clocks(chargers)
         return chargers
+
+    def _check_clocks(self, chargers: dict[str, ThorCharger]) -> None:
+        """Warn in Repairs while a charger's clock differs from Home Assistant's.
+
+        Compared at noon, away from the hour daylight saving changes; on the
+        charger's own switch days the warning is left as it is.
+        """
+        noon = dt_util.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        ha_offset = noon.utcoffset()
+        for sn, charger in chargers.items():
+            offset = charger_offset(charger.config, noon.date())
+            if offset is None or ha_offset is None:
+                continue
+            issue_id = clock_issue_id(sn)
+            if offset == ha_offset:
+                ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+                continue
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                learn_more_url=TIME_ZONE_HELP_URL,
+                translation_key="time_zone_mismatch",
+                translation_placeholders={
+                    "name": charger.summary.get("name") or sn,
+                    "zone": time_zone(charger.config) or "",
+                    "charger_offset": format_offset(offset),
+                    "ha_offset": format_offset(ha_offset),
+                },
+            )
 
     async def _async_fetch(self) -> dict[str, ThorCharger]:
         # Sequential on purpose, to keep the load on Growatt's cloud low.
@@ -192,6 +260,25 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 except GrowattThorApiError as err:
                     # Secondary data: keep the last list instead of failing the update.
                     _LOGGER.debug("Reservation list not available for %s: %s", sn, err)
+            last_session = previous.last_session if previous else {}
+            # The history only changes when a session ends: read it with the settings,
+            # and right after a transaction stops.
+            ended = (
+                previous is not None
+                and previous.connector.get("status") in ACTIVE_STATES
+                and connector.get("status") not in ACTIVE_STATES
+            )
+            if refresh_config or previous is None or ended:
+                try:
+                    sessions = await self.api.async_get_sessions(sn, SESSIONS_READ)
+                except GrowattThorApiError as err:
+                    # Secondary data, like the reservations.
+                    _LOGGER.debug("Charge history not available for %s: %s", sn, err)
+                else:
+                    last_session = next(
+                        (s for s in sessions if s.get("sysEndTime") or s.get("endtime")),
+                        last_session,
+                    )
             chargers[sn] = ThorCharger(
                 sn=sn,
                 summary=summary,
@@ -199,6 +286,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 connector=connector,
                 reservations=reservations,
                 charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
+                last_session=last_session,
             )
         if refresh_config:
             self._config_fetched_at = now

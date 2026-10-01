@@ -21,6 +21,7 @@ from .charge_mode import (
     MODE_OFF_PEAK,
     MODE_PV_LINKAGE,
     charge_mode_fields,
+    check_mode_change,
     cheapest_period_time,
 )
 from .const import CONNECTOR_ID, LIMIT_COST, LIMIT_DURATION, LIMIT_ENERGY
@@ -72,10 +73,24 @@ def next_start(at: time, now: datetime) -> datetime:
     return start if start > now else start + timedelta(days=1)
 
 
+def check_remote_control(charger: ThorCharger) -> None:
+    """Raise PlanError when sessions cannot be started or stopped remotely."""
+    if charger.rfid_only:
+        raise PlanError("Remote start and stop are disabled in RFID authorization mode")
+
+
 async def async_start(coordinator: GrowattThorCoordinator, sn: str, plan: ChargePlan) -> None:
-    """Fast: start now, or reserve a start at plan.start_time (once or every day)."""
-    if coordinator.data[sn].charge_mode.get("mode") != MODE_FAST:
+    """Fast: start now, or reserve a start at plan.start_time (once or every day).
+
+    Not while a session is open; in RFID mode only scheduled starts are allowed.
+    """
+    charger = coordinator.data[sn]
+    if charger.charge_mode.get("mode") != MODE_FAST:
         raise PlanError("Scheduled charging is only available in Fast mode")
+    if charger.in_session:
+        raise PlanError("Limits and scheduled starts can be set once the current session ends")
+    if plan.start == "now":
+        check_remote_control(charger)
     key, value = limit_fields(plan)
     if plan.start != "now" and plan.start_time is None:
         raise PlanError("Set the start time first")
@@ -130,6 +145,15 @@ def is_boost_on(charger: ThorCharger) -> bool:
     return str(charger.charge_mode.get("boost")) == "1"
 
 
+def boost_params(charger: ThorCharger) -> dict[str, str]:
+    """The Boost "config": time1 (manual window) or contime and energy (smart)."""
+    return dict(
+        part.split("=", 1)
+        for part in str(charger.charge_mode.get("config") or "").split("&")
+        if "=" in part
+    )
+
+
 def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
     """The staged plan, aligned with the charger where it matters.
 
@@ -149,11 +173,7 @@ def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
 
 def _sync_boost(plan: ChargePlan, charger: ThorCharger) -> None:
     plan.boost_type = charger.charge_mode.get("boostType") or plan.boost_type
-    params = dict(
-        part.split("=", 1)
-        for part in str(charger.charge_mode.get("config") or "").split("&")
-        if "=" in part
-    )
+    params = boost_params(charger)
     window = params.get("time1", "").split("-")
     if len(window) == 2 and (start := _parse_time(window[0])) and (end := _parse_time(window[1])):
         plan.boost_from, plan.boost_to = start, end
@@ -168,6 +188,7 @@ def boost_fields(charger: ThorCharger, plan: ChargePlan, enabled: bool) -> dict[
     mode = charger.charge_mode.get("mode")
     if mode not in BOOST_MODES:
         raise PlanError("Boost is only available in PV Linkage and Off-peak")
+    check_mode_change(charger)
     if not enabled:
         return charge_mode_fields(charger, mode, boost="0", config="")
     # Off-peak only has smart Boost.
@@ -272,6 +293,7 @@ def period_time(plan: ChargePlan) -> str:
 
 def off_peak_fields(charger: ThorCharger, plan: ChargePlan) -> dict[str, Any]:
     """chargeMode update to Off-peak with the plan's slots."""
+    check_mode_change(charger)
     return charge_mode_fields(charger, MODE_OFF_PEAK, G_PeriodTime=period_time(plan))
 
 

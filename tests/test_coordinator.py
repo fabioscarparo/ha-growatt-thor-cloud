@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.growatt_thor_cloud.api import GrowattThorApiError
 
-from .common import call, setup_integration, state
+from .common import call, set_charging, setup_integration, state
 
 
 async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, freezer) -> None:
@@ -24,7 +24,7 @@ async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, f
     await coordinator.async_refresh()
     assert coordinator.last_update_success
     assert coordinator.update_interval == timedelta(seconds=120)
-    assert state(hass, "sensor", "status").state == "charging"
+    assert state(hass, "sensor", "status").state == "available"
 
     freezer.tick(timedelta(minutes=6))  # Past the grace period.
     await coordinator.async_refresh()
@@ -36,7 +36,7 @@ async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, f
     await coordinator.async_refresh()
     assert coordinator.last_update_success
     assert coordinator.update_interval == timedelta(seconds=60)
-    assert state(hass, "sensor", "status").state == "charging"
+    assert state(hass, "sensor", "status").state == "available"
 
 
 async def test_settings_read_every_five_minutes(hass: HomeAssistant, mock_api, freezer) -> None:
@@ -99,11 +99,12 @@ async def test_entry_without_serial_is_skipped(hass: HomeAssistant, mock_api) ->
     ]
     entry = await setup_integration(hass)
     assert entry.state is ConfigEntryState.LOADED
-    assert state(hass, "sensor", "status").state == "charging"
+    assert state(hass, "sensor", "status").state == "available"
 
 
 async def test_start_stop_do_not_reread_settings(hass: HomeAssistant, mock_api) -> None:
     """Start and stop only change the session, so settings are not fetched again."""
+    set_charging(mock_api)
     await setup_integration(hass)
     await call(hass, "switch", "turn_on", "charging")
     await call(hass, "switch", "turn_off", "charging")
@@ -116,5 +117,13 @@ async def test_reservation_list_failure_is_not_fatal(hass: HomeAssistant, mock_a
     mock_api.async_get_reservations.side_effect = GrowattThorApiError("code 1")
     entry = await setup_integration(hass)
     assert entry.state is ConfigEntryState.LOADED
-    assert state(hass, "sensor", "status").state == "charging"
+    assert state(hass, "sensor", "status").state == "available"
     assert state(hass, "button", "cancel_reservation").state == "unavailable"
+
+
+async def test_history_failure_is_not_fatal(hass: HomeAssistant, mock_api) -> None:
+    """The charge history is secondary too: its failure keeps the rest of the data."""
+    mock_api.async_get_sessions.side_effect = GrowattThorApiError("code 1")
+    entry = await setup_integration(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert state(hass, "sensor", "last_session").state == "unknown"

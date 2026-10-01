@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.0
+### New
+- *Unlock connector*: unlocks the cable at the charger while no charge is in progress.
+- *Advanced - Auto unlock connector* (disabled by default): the charger unlocks the cable
+  once it is unplugged from the EV.
+- *Session - Progress*: how much of the session's limit, or of the smart Boost energy, is
+  reached.
+- *Session - Last charge*: end of the last session, with its start, duration, energy and
+  cost; the session sensors reset once a session is over.
+- Diagnostics: *Time zone* (with the daylight saving period), *Network connection*, *Network
+  mode*, *Protection temperature*, and the meter's bus address on *Meter type*.
+- A warning in Repairs while the charger's clock differs from Home Assistant's: Off-peak
+  slots, Boost windows and scheduled starts would run at the wrong time.
+- `tools/probe_thor.py` also dumps the installer-protected settings, the time-slot power
+  limits, the last sessions and the time zone list, and masks personal data (account name,
+  serial numbers, network details, site) so its output can be attached to an issue.
+
+### Changed
+- While a session is open (charging, suspended or finishing), the charge mode, Boost, the grid
+  import, the Off-peak slots and Fast limits and scheduled starts can no longer be changed;
+  the change is refused with a message. General settings can still change at any time.
+- In RFID authorization mode, remote start and stop are refused (scheduled starts are still
+  sent).
+- *General - Load balancing* is unavailable in PV Linkage.
+- *Charge mode* offers only the modes the charger supports.
+- On a charger shared with the account, settings and the charge mode are read-only.
+- *General - Max current* goes up to 16 A on 3.6 kW and 11 kW chargers.
+- *LCD display* is now *Advanced - LCD display*, an installer setting disabled for new
+  installs, and exists only on chargers with a display (it is removed from the others).
+- When no charger is found during setup, the message suggests checking the username.
+
+### Fixed
+- The result of start, stop and scheduled start commands is read from `type` as well as
+  `code`, so a command the charger rejects is reported as an error.
+- An invalid grid import (e.g. without a grid sampling device) is reported as a validation
+  error instead of an unexpected one.
+
 ## 0.5.3
 ### Changed
 - The integration icon has rounded corners.

@@ -9,7 +9,26 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growatt_thor_cloud.const import CONF_PASSWORD_HASH, DOMAIN
 
-from .conftest import SN
+from .conftest import CHARGE_MODE, CHARGING, CONFIG, CONNECTOR, SN
+
+
+def set_connector(mock_api, reservations=(), **data) -> None:
+    """Make charge/info return these connector fields, and the reservation list these."""
+    mock_api.async_get_connector.side_effect = lambda sn, cid: {**CONNECTOR, **data}
+    mock_api.async_get_reservations.side_effect = lambda sn, cid: [dict(r) for r in reservations]
+
+
+def set_charging(mock_api, **data) -> None:
+    """A running session, with these connector fields on top."""
+    set_connector(mock_api, **{**CHARGING, **data})
+
+
+def set_charge_mode(mock_api, **fields) -> None:
+    mock_api.async_get_charge_mode.side_effect = lambda sn, cid: {**CHARGE_MODE, **fields}
+
+
+def set_config(mock_api, **fields) -> None:
+    mock_api.async_get_config.side_effect = lambda sn: {**CONFIG, **fields}
 
 
 async def setup_integration(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:

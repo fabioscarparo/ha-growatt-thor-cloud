@@ -9,7 +9,8 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
   reported as `host` on `charger` entries of the smart-home device list (see Auth).
 - All calls: `POST`, JSON body, header `Authorization: <token>` after login.
 - Response: `{"code": 0, "data": ...}`; `code: 501` = not logged in, log in again. Other
-  non-zero codes are errors; their meanings are not documented.
+  non-zero codes are errors; their meanings are not documented. Commands (`/ocpp/cmd/`) carry
+  their result in `type` instead (0 = done, 501 = not logged in), with or without `code`.
 - `lan` selects the language of messages: 1 = English.
 
 ## Auth
@@ -33,8 +34,30 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
 | `/ocpp/api/ReserveNow` | `chargeId, connectorId (string), userId, lan` | Reservations (scheduled starts) of the connector (see Write) |
 | `/ocpp/api/configInfo` | `sn, userId, lan` | Charger settings, network info, firmware `version`, `deviceModel` |
 | `/ocpp/chargeMode` | `cmd:"select", chargeId, connectorId (int), userId` | Current charge mode |
-| `/ocpp/api/chargeRecord` | - | Charge history |
-| `/ocpp/api/` | `cmd:"noConfig"` etc. | Misc commands by `cmd` |
+| `/ocpp/api/chargeRecord` | `sn, page, psize, userId, lan` | Sessions, newest first (see below) |
+| `/ocpp/meterInfo` | `cmd:"meterInfo", chargeId, lan` | `data` = power measured by the CT or meter, W |
+| `/ocpp/api/timeZoneList2` | `{}` | Time zones for `sysTimeZone` |
+| `/ocpp/tcharg/tfirmware/` | `cmd:"f_charger_version", chargeId, lan` | `data[0]`: `nowVersion`, `newVersion`, `needUpdate` |
+| `/ocpp/api/` | `cmd` + fields | Misc commands by `cmd`, below |
+
+`/ocpp/api/` commands:
+- `noConfig` (`userId, lan`): `sfield` = settings protected by an installer password, which
+  comes in the same reply (`configWord`, `password`); never print or store it.
+- `selectLimitPower` (`chargeId`): power limits by time slot, `isEnable` (1/0), `cid` and
+  `config[]` of `{"loop": "1111111", "time": "HH:MM-HH:MM", "power": "<kW>"}`, one `loop`
+  flag per weekday, up to 10 slots. Written with `updateLimitPower` (`isEnable`, `cid`,
+  `config`).
+- `chargeData` (`chargeId, timeType, time, requestType:"0"`): energy and cost per period,
+  `data[]` of `{t, energy, cost}`; `timeType` 0 = days of a month (`time` `YYYY-MM`), 1 = months
+  of a year (`YYYY`), 2 = years.
+- `unlock`, `addPrice`: see Write.
+
+`chargeRecord` entries: `starttime` / `endtime` (`"YYYY-MM-DD HH:MM:SS"` on the charger's
+clock), `ctime` (minutes), `energy` (kWh), `cost`, `chargemode` (authorization used: 1 =
+APP, 2 = RFID, 3 = Plug&Charge), `userId` (idTag), `transactionId`. `sysStartTime` /
+`sysEndTime` are those wall-clock times read as UTC+8, not true epochs. `pvEnergy` and
+`consume` were 0 in every entry seen. The live data of `charge/info` goes back to 0 once a
+session is over.
 
 Field meanings:
 - `charge/info` `data`: `current` A, `voltage` V, `energy` kWh (session), `ctime` minutes,
@@ -49,10 +72,33 @@ Field meanings:
   Other values are unknown; the integration's Online sensor treats them as offline.
 - `configInfo` also contains secrets (`G_WifiPassword`, `G_CardPin`, `G_Authentication`,
   `G_4GPassword`, `G_4GUserName`): the integration drops them on read.
+- `list` entries: `type` 1 = charger shared with the account by its owner (its settings and
+  charge mode cannot be changed, starting and stopping can), 0 = own charger.
+- Feature flags in `configInfo`: `isSupportPL` (PV Linkage), `isSupportLoadBalancing`,
+  `isSupportLowRateMode` (off-peak), `isSupportRF`, `isSupport_LCDEnable` (false on models
+  without a display). A charger with neither load balancing nor low-rate support runs Fast
+  only; PV Linkage also needs `isSupportPL`. Missing flags are taken as supported.
+- `noConfig` lists among the protected (installer) settings `G_LCDCloseEnable`,
+  `UnlockConnectorOnEVSideDisconnect`, `G_MaxTemperature`, `G_RCDProtection`,
+  `G_PowerMeterType` and `G_PowerMeterAddr`; `sysTimeZone` and `G_DaylightSavingTime` are not
+  protected.
+- Clock: `sysTimeZone` (e.g. `UTC+2`, from `timeZoneList2`) plus `G_DaylightSavingTime` =
+  `"MM-DD&MM-DD"`, the daylight saving start and end for one year (`00-00&00-00` = not set).
+  Off-peak slots, Boost windows and scheduled starts run on this clock.
+- `G_NetType` (`wifi` / `cable`), `G_NetworkMode` (`DHCP` / `STATIC`), `G_MaxTemperature`
+  (protection temperature, °C), `G_PowerMeterAddr` (meter bus address), `G_RCDProtection`
+  (protection level 1-9).
+- `G_AutoChargeTime`: window in which charging is allowed, `"HH:MM-HH:MM"`, empty = always.
+- `G_RandDelayChargeTime`: random delay before a session starts, s (0 = off, 600 by default,
+  1-1800).
+- `G_ExternalLimitPower`: highest grid import for load balancing, kW.
+- `UnlockConnectorOnEVSideDisconnect`: `"true"` = the cable is unlocked at the charger once it
+  is unplugged from the EV, `"false"` = it stays locked (sent as string).
 - Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,
   one entry per time slot; slots may wrap past midnight. Set with `POST /ocpp/api/`
   `{"cmd":"addPrice","chargeId","priceConf":[{"time","price","name":""}],"userId","lan"}`.
 - `G_ChargerMode` (authorization): 1 = APP/RFID, 2 = RFID, 3 = Plug&Charge (sent as int).
+  In RFID mode sessions start and stop with a card, not remotely.
 - `G_SolarMode`: 0 = FAST, 1 = ECO (PV surplus + grid import set by `G_SolarLimitPower`),
   2 = ECO+ (sent as int). ECO+ is not documented; it appears to match PV Linkage with grid
   import off. Low-level setting behind the charge modes: prefer `chargeMode`.
@@ -78,11 +124,16 @@ Field meanings:
 ## Write
 - Start: `POST /ocpp/cmd/` `{"action":"remoteStartTransaction","chargeId","connectorId","userId","lan"}`.
 - Stop: `POST /ocpp/cmd/` `{"action":"remoteStopTransaction","chargeId","connectorId","transactionId","userId","lan"}`.
-- Unlock: `POST /ocpp/api/` `{"cmd":"unlock","chargeId","connectorId","userId","lan"}`.
+- Unlock: `POST /ocpp/api/` `{"cmd":"unlock","chargeId","connectorId","userId","lan"}`, with
+  `connectorId` as string; meant for when no charge is in progress.
 - Settings: `POST /ocpp/api/config` `{"chargeId","userId","lan","<key>": value}` with keys like
   `G_MaxCurrent`, `G_ChargerMode`, `G_SolarMode`, `G_SolarLimitPower`, `G_ExternalLimitPower`,
   `G_ExternalLimitPowerEnable`, `G_PeakValleyEnable`, `G_AutoChargeTime`, `G_LCDCloseEnable`,
-  `G_FullContinueChargeEnable`.
+  `G_FullContinueChargeEnable`, `UnlockConnectorOnEVSideDisconnect`, `G_RandDelayChargeTime`,
+  `sysTimeZone`, `G_DaylightSavingTime`. These can change at any time, also during a session.
+- The charge mode, its Boost and slots, and Fast limits and scheduled starts are changed only
+  outside a session (`Charging`, `SuspendedEV`, `SuspendedEVSE`, `Finishing`): stop the session
+  before switching mode.
 - Limited and scheduled starts belong to Fast mode.
 - Start with a limit: add `"cKey"` + `"cValue"` (string) to `remoteStartTransaction`. Keys:
   `G_SetAmount` (cost, currency, above 0), `G_SetEnergy` (kWh, above 0), `G_SetTime` (duration
