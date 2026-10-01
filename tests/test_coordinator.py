@@ -40,7 +40,7 @@ async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, f
 
 
 async def test_settings_read_every_five_minutes(hass: HomeAssistant, mock_api, freezer) -> None:
-    """Settings are re-read on a slow timer, or right after a write from HA."""
+    """Settings are re-read on a slow timer, not right after a write from HA."""
     entry = await setup_integration(hass)
     coordinator = entry.runtime_data
     assert mock_api.async_get_config.await_count == 1
@@ -52,9 +52,10 @@ async def test_settings_read_every_five_minutes(hass: HomeAssistant, mock_api, f
     await coordinator.async_refresh()
     assert mock_api.async_get_config.await_count == 2
 
+    # The charger has not applied a write yet: reading now would show the old value.
     await coordinator.async_refresh_after_write()
     await hass.async_block_till_done()
-    assert mock_api.async_get_config.await_count == 3
+    assert mock_api.async_get_config.await_count == 2
 
 
 async def test_setup_retries_when_cloud_is_down(hass: HomeAssistant, mock_api) -> None:
@@ -148,3 +149,19 @@ async def test_settings_confirmed_after_write(hass: HomeAssistant, mock_api, fre
     freezer.tick(timedelta(seconds=60))
     await coordinator.async_refresh()
     assert mock_api.async_get_config.await_count == reads + 1  # Back to every 5 minutes.
+
+
+async def test_written_setting_kept_until_confirmed(
+    hass: HomeAssistant, mock_api, freezer
+) -> None:
+    """A written setting shows at once and is checked against the charger later."""
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    await call(hass, "switch", "turn_on", "warm_up")
+    await hass.async_block_till_done()
+    assert state(hass, "switch", "warm_up").state == "on"  # Not reverted by the refresh.
+
+    # The charger never applied it: the confirming read shows the real value.
+    freezer.tick(timedelta(seconds=120))
+    await coordinator.async_refresh()
+    assert state(hass, "switch", "warm_up").state == "off"

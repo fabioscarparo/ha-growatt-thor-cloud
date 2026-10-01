@@ -204,10 +204,12 @@ dashboard settings.
 ## Polling and rate limits
 Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
-  settings, the scheduled starts and the charge history only every 5 minutes or right after a
-  change made from Home Assistant (the scheduled starts also on every poll while one exists,
-  the history also as soon as a session ends). After a change the settings are read once more
-  about 2 minutes later, since the charger confirms them about a minute after they are sent;
+  settings, the scheduled starts and the charge history only every 5 minutes (the scheduled
+  starts also on every poll while one exists and right after a change, the history also as
+  soon as a session ends);
+- after a change made from Home Assistant, shows the new value right away and reads the
+  settings again about 2 minutes later, once the charger has applied it (it takes about a
+  minute): reading them sooner would bring back the old value;
 - logs in only when the session expires, one login at a time, and waits 5 minutes after a
   failed login before trying again;
 - on errors or rate limiting keeps the last values for 5 minutes and slows polling down

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4
+### Fixed
+- After a change made from Home Assistant (e.g. *General - Warm-up*), the entity no longer
+  goes back to the old value for a couple of minutes: the settings are read again only once
+  the charger has applied the change.
+- A login reply whose result code comes as text is understood.
+
 ## 0.6.3
 ### Changed
 - *Advanced - ECO grid limit* is available only while *Advanced - Solar mode* is ECO, the

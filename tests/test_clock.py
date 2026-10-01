@@ -75,10 +75,10 @@ async def test_clock_warning(hass: HomeAssistant, mock_api, freezer) -> None:
     assert issue.translation_placeholders["charger_offset"] == "+02:00"
     assert issue.translation_placeholders["ha_offset"] == "+01:00"
 
-    # Fixed on the charger: UTC+1 with daylight saving.
+    # Fixed on the charger: UTC+1 with daylight saving, read with the settings.
     set_config(mock_api, sysTimeZone="UTC+1", G_DaylightSavingTime="03-29&10-25")
-    await coordinator.async_refresh_after_write()
-    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=5))
+    await coordinator.async_refresh()
     assert registry.async_get_issue(DOMAIN, ISSUE_ID) is None
 
 

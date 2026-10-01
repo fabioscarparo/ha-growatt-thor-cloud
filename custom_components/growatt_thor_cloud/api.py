@@ -260,7 +260,7 @@ class GrowattThorApi:
         # The login request carries the password hash: only the reply is logged.
         _LOGGER.debug("POST /ocpp/user (login) -> %s", _masked(data))
         token = data.get("token")
-        if data.get("code") != CODE_OK or not token:
+        if _result("/ocpp/user", data) != CODE_OK or not token:
             self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
             raise GrowattThorAuthError(str(data.get("data") or "Login failed"))
         self._login_retry_at = 0.0
