@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+### Changed
+- *Advanced - ECO grid limit* is available only while *Advanced - Solar mode* is ECO, the
+  only mode that uses it.
+
 ## 0.6.2
 ### New
 - *Working mode* (diagnostic): the mode the charger actually runs, as it confirms it, e.g.

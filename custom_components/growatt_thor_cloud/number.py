@@ -61,6 +61,8 @@ class ThorNumberDescription(NumberEntityDescription):
     to_api: Callable[[float], Any]  # Converts HA's float to the setting's wire format.
     # Upper bound from the charger's data, instead of native_max_value.
     max_fn: Callable[[ThorCharger], float] | None = None
+    # When set, the number is available only while this returns True.
+    available_fn: Callable[[ThorCharger], bool] | None = None
 
 
 NUMBERS: tuple[ThorNumberDescription, ...] = (
@@ -76,8 +78,9 @@ NUMBERS: tuple[ThorNumberDescription, ...] = (
         to_api=lambda v: str(int(v)),  # Sent as a string.
         max_fn=max_current,
     ),
-    # Low-level grid import used by the ECO solar mode (manual, parameter 21).
-    # Hidden by default: the PV Linkage grid import below is the everyday control.
+    # Low-level grid import used by the ECO solar mode (manual, parameter 21), and
+    # only by it. Hidden by default: the PV Linkage grid import below is the
+    # everyday control.
     ThorNumberDescription(
         key="solar_limit_power",
         device_class=NumberDeviceClass.POWER,
@@ -90,6 +93,7 @@ NUMBERS: tuple[ThorNumberDescription, ...] = (
         config_key="G_SolarLimitPower",
         to_api=lambda v: round(v, 2),
         max_fn=lambda c: c.rated_power_kw or DEFAULT_MAX_POWER_KW,
+        available_fn=lambda c: str(c.config.get("G_SolarMode")) == "1",  # ECO
     ),
 )
 
@@ -199,6 +203,11 @@ class ThorNumber(ThorEntity, NumberEntity):
         self.entity_description = description
         if description.max_fn is not None:
             self._attr_native_max_value = description.max_fn(self.charger)
+
+    @property
+    def available(self) -> bool:
+        available_fn = self.entity_description.available_fn
+        return super().available and (available_fn is None or available_fn(self.charger))
 
     @property
     def native_value(self) -> float | None:

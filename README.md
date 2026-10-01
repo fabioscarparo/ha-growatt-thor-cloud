@@ -85,7 +85,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Entity | Type | Notes |
 |---|---|---|
 | Advanced - Auto unlock connector | switch, disabled by default | installer setting: on = the charger unlocks the cable when it is unplugged from the EV |
-| Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW; set by Growatt from *PV Linkage - Grid import power* |
+| Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW, available in ECO only; set by Growatt from *PV Linkage - Grid import power* |
 | Advanced - LCD display | switch, disabled by default | chargers with a display only; installer setting: off = screen turns off automatically |
 | Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting; set by Growatt from PV Linkage (ECO with grid import, ECO+ without) |
 | Boost - Type | select | manual / smart (Off-peak is always smart) |

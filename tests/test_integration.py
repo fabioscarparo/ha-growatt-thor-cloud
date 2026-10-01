@@ -200,14 +200,17 @@ async def test_session_progress_needs_a_session(hass: HomeAssistant, mock_api) -
 
 
 async def test_hidden_settings(hass: HomeAssistant, mock_api) -> None:
-    """Low-level ECO settings work once the user enables them."""
+    """Low-level ECO settings work once enabled; the ECO limit only in ECO."""
     entry = await setup_integration(hass)
     await _enable(hass, entry, ("select", "solar_mode"), ("number", "solar_limit_power"))
     assert _state(hass, "select", "solar_mode").state == "eco_plus"
-    assert _state(hass, "number", "solar_limit_power").state == "1.38"
+    assert _state(hass, "number", "solar_limit_power").state == "unavailable"  # Unused in ECO+.
 
+    set_config(mock_api, G_SolarMode=1)  # The charger confirms ECO.
     await _call(hass, "select", "select_option", "solar_mode", option="eco")
     mock_api.async_set_config.assert_awaited_with(SN, "G_SolarMode", 1)
+    await hass.async_block_till_done()
+    assert _state(hass, "number", "solar_limit_power").state == "1.38"
 
 
 async def test_charge_mode_fast(hass: HomeAssistant, mock_api) -> None:
