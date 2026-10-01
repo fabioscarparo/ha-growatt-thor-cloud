@@ -34,6 +34,8 @@ _LOGGER = logging.getLogger(__name__)
 TIME_ZONE_HELP_URL = "https://github.com/fabioscarparo/ha-growatt-thor-cloud#time-zone"
 # Sessions read from the history: two, in case the newest one has not ended yet.
 SESSIONS_READ = 2
+# A write is confirmed by the charger about a minute later: read the settings again then.
+CONFIRM_DELAY = timedelta(seconds=90)
 
 type GrowattThorConfigEntry = ConfigEntry[GrowattThorCoordinator]
 
@@ -157,6 +159,8 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self._last_success: datetime | None = None
         self._config_fetched_at: datetime | None = None
         self._config_stale = True
+        # When to read the settings again after a write, once the charger has confirmed it.
+        self._confirm_at: datetime | None = None
 
     @property
     def base_interval(self) -> timedelta:
@@ -168,8 +172,13 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         return self.plans.setdefault(sn, ChargePlan())
 
     async def async_refresh_after_write(self) -> None:
-        """Refresh soon, re-reading settings and reservations, to confirm a change."""
+        """Refresh soon, re-reading settings and reservations, to confirm a change.
+
+        The charger applies and confirms new settings about a minute later, so
+        they are read once more on the first poll after CONFIRM_DELAY.
+        """
         self._config_stale = True
+        self._confirm_at = dt_util.utcnow() + CONFIRM_DELAY
         await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, ThorCharger]:
@@ -233,8 +242,10 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
     async def _async_fetch(self) -> dict[str, ThorCharger]:
         # Sequential on purpose, to keep the load on Growatt's cloud low.
         now = dt_util.utcnow()
+        confirm_due = self._confirm_at is not None and now >= self._confirm_at
         refresh_config = (
             self._config_stale
+            or confirm_due
             or self._config_fetched_at is None
             or now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL
         )
@@ -294,4 +305,6 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         if refresh_config:
             self._config_fetched_at = now
             self._config_stale = False
+        if confirm_due:
+            self._confirm_at = None
         return chargers

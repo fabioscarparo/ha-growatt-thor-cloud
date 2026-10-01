@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 import pytest
 
@@ -216,3 +217,23 @@ async def test_unlock_payload(hass, aioclient_mock) -> None:
         "chargeId": "SN1",
         "connectorId": "1",
     }
+
+
+async def test_debug_log_masks_credentials(hass, aioclient_mock, caplog) -> None:
+    """Requests and replies are logged for debugging, without credentials or the token."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.growatt_thor_cloud.api")
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "tok-123"})
+    aioclient_mock.post(
+        CONFIG_URL,
+        json={
+            "code": 0,
+            "data": {"G_MaxCurrent": 16, "G_WifiPassword": "pw-456", "G_WifiSSID": "MyNet"},
+        },
+    )
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "pwhash-789")
+
+    await api.async_get_config("SN1")
+    assert "/ocpp/api/configInfo" in caplog.text
+    assert "G_MaxCurrent" in caplog.text
+    for secret in ("tok-123", "pw-456", "MyNet", "pwhash-789"):
+        assert secret not in caplog.text

@@ -392,3 +392,21 @@ async def test_lcd_only_with_a_display(hass: HomeAssistant, mock_api) -> None:
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert registry.async_get(old.entity_id) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("PVlink+", "pv_linkage_surplus"),
+        ("PVlink", "pv_linkage_grid"),
+        ("PVlink ManualBoost", "pv_linkage_grid"),
+        ("Off Peak", "off_peak"),
+        ("Fast", "fast"),
+        ("FutureMode", "unknown"),
+    ],
+)
+async def test_working_mode(hass: HomeAssistant, mock_api, raw: str, expected: str) -> None:
+    """The mode the charger runs, with any Boost suffix left out."""
+    set_config(mock_api, G_WorkingMode=raw)
+    await setup_integration(hass)
+    assert _state(hass, "sensor", "working_mode").state == expected

@@ -104,6 +104,14 @@ Field meanings:
   import off. Low-level setting behind the charge modes: prefer `chargeMode`.
 - `G_MaxCurrent`: A, sent as string.
 - `G_SolarLimitPower`: kW, grid import used by ECO, sent as float.
+- Growatt sets `G_SolarMode` and `G_SolarLimitPower` from the PV Linkage `importGrid`: ECO with
+  the limit rounded down to whole amps (2 kW -> 1.84 kW, 8 A at 230 V) while it is above 0,
+  ECO+ when it is 0 (the limit then keeps its last value). The charger confirms them about a
+  minute after the mode update; `ctime` in `configInfo` and in `chargeMode` is the time of the
+  last update (epoch ms).
+- `G_WorkingMode`: the mode the charger runs: `Fast`, `PVlink` (PV Linkage with grid import),
+  `PVlink+` (surplus only), `Off Peak`, `Power Distribution`, with a ` ManualBoost` /
+  ` SmartBoost` suffix while Boost runs.
 - `G_ExternalLimitPowerEnable`: 0 = off, 1 = on (sent as int).
 - `G_LCDCloseEnable`: `"Enable"` = screen turns off automatically, `"Disable"` = always on.
 - `G_FullContinueChargeEnable` (warm-up): `"Enable"` = once the EV is full, keep supplying

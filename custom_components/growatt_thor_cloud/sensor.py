@@ -40,6 +40,17 @@ SAMPLING_DEVICES = {"0": "ct2000", "1": "meter", "2": "ct3000"}
 LIMIT_PROGRESS = {"cost": "cost", "energy": "energy", "duration": "ctime"}
 NETWORK_CONNECTIONS = ["wifi", "cable"]  # G_NetType
 NETWORK_MODES = ["dhcp", "static"]  # G_NetworkMode
+# G_WorkingMode, the mode the charger runs: in PV Linkage, "PVlink" may draw on
+# the grid import allowance, "PVlink+" uses the surplus only.
+WORKING_MODES = {
+    "fast": "fast",
+    "pvlink": "pv_linkage_grid",
+    "pvlink+": "pv_linkage_surplus",
+    "off peak": "off_peak",
+    "power distribution": "power_distribution",
+}
+# A running Boost is reported as a suffix, e.g. "PVlink ManualBoost".
+BOOST_SUFFIXES = ("manualboost", "smartboost")
 
 
 def _option(value: object, options: list[str]) -> str | None:
@@ -117,6 +128,14 @@ def _progress(charger: ThorCharger) -> float | None:
     if not target or done is None:
         return None
     return round(min(done / target * 100, 100.0), 1)
+
+
+def _working_mode(charger: ThorCharger) -> str | None:
+    """The charger's working mode, without its Boost suffix; None if not known."""
+    raw = str(charger.config.get("G_WorkingMode") or "").strip().lower()
+    for suffix in BOOST_SUFFIXES:
+        raw = raw.removesuffix(suffix).strip()
+    return WORKING_MODES.get(raw)
 
 
 def _session_time(charger: ThorCharger, key: str) -> datetime | None:
@@ -330,6 +349,14 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         options=NETWORK_MODES,
         value_fn=lambda c: _option(c.config.get("G_NetworkMode"), NETWORK_MODES),
+    ),
+    # What the charger actually runs, as confirmed by it after a change.
+    ThorSensorDescription(
+        key="working_mode",
+        device_class=SensorDeviceClass.ENUM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        options=list(WORKING_MODES.values()),
+        value_fn=_working_mode,
     ),
     # The charger's clock; it must match Home Assistant's (see clock.py).
     ThorSensorDescription(

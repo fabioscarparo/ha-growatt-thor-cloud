@@ -11,12 +11,15 @@ import asyncio
 from datetime import datetime
 import hashlib
 import json
+import logging
 import time
 from typing import Any
 
 import aiohttp
 
 from .const import DEFAULT_BASE_URL, DEFAULT_USER_PREFIX, LIMIT_DURATION
+
+_LOGGER = logging.getLogger(__name__)
 
 LAN = 1  # Response language: 1 = English.
 USER_AGENT = "MyApp/8.5.6.0 ShinePhone"
@@ -33,6 +36,8 @@ LOGIN_COOLDOWN = 300  # s
 SECRET_KEYS = frozenset(
     {"G_WifiPassword", "G_CardPin", "G_Authentication", "G_4GPassword", "G_4GUserName"}
 )
+# Masked in the debug log: credentials, the session token and the Wi-Fi name.
+LOG_MASKED = SECRET_KEYS | {"token", "G_WifiSSID"}
 
 
 class GrowattThorError(Exception):
@@ -45,6 +50,15 @@ class GrowattThorAuthError(GrowattThorError):
 
 class GrowattThorApiError(GrowattThorError):
     """The API could not be reached or returned an error; worth retrying later."""
+
+
+def _masked(data: Any) -> Any:
+    """A reply with the LOG_MASKED fields hidden, for the debug log."""
+    if isinstance(data, dict):
+        return {k: "<masked>" if k in LOG_MASKED else _masked(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_masked(v) for v in data]
+    return data
 
 
 def _result(path: str, data: dict[str, Any]) -> int | None:
@@ -243,6 +257,8 @@ class GrowattThorApi:
         except GrowattThorApiError:
             self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
             raise
+        # The login request carries the password hash: only the reply is logged.
+        _LOGGER.debug("POST /ocpp/user (login) -> %s", _masked(data))
         token = data.get("token")
         if data.get("code") != CODE_OK or not token:
             self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
@@ -263,9 +279,11 @@ class GrowattThorApi:
             await self._refresh_token(None)
         used_token = self._token
         data = await self._request(path, payload)
+        _LOGGER.debug("POST %s %s -> %s", path, payload, _masked(data))
         if _result(path, data) == CODE_NOT_LOGGED_IN:
             await self._refresh_token(used_token)
             data = await self._request(path, payload)
+            _LOGGER.debug("POST %s %s -> %s", path, payload, _masked(data))
         if _result(path, data) != CODE_OK:
             raise GrowattThorApiError(f"{path} failed: {data.get('data')}")
         return data

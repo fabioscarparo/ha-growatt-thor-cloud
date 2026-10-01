@@ -214,6 +214,16 @@
           "static": "Static"
         }
       },
+      "working_mode": {
+        "name": "Working mode",
+        "state": {
+          "fast": "Fast",
+          "pv_linkage_grid": "PV Linkage with grid import",
+          "pv_linkage_surplus": "PV Linkage, surplus only",
+          "off_peak": "Off-peak",
+          "power_distribution": "Power distribution"
+        }
+      },
       "time_zone": {
         "name": "Time zone",
         "state_attributes": {

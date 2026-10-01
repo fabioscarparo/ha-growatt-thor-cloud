@@ -85,9 +85,9 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Entity | Type | Notes |
 |---|---|---|
 | Advanced - Auto unlock connector | switch, disabled by default | installer setting: on = the charger unlocks the cable when it is unplugged from the EV |
-| Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW |
+| Advanced - ECO grid limit | number, disabled by default | low-level grid import for ECO, kW; set by Growatt from *PV Linkage - Grid import power* |
 | Advanced - LCD display | switch, disabled by default | chargers with a display only; installer setting: off = screen turns off automatically |
-| Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting |
+| Advanced - Solar mode | select, disabled by default | low-level FAST / ECO / ECO+ setting; set by Growatt from PV Linkage (ECO with grid import, ECO+ without) |
 | Boost - Type | select | manual / smart (Off-peak is always smart) |
 | Boost manual - From, To | time | full power window (PV Linkage only) |
 | Boost smart - Departure time, Energy | time, number | energy guaranteed by that time |
@@ -101,7 +101,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |
 | Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
 | PV Linkage - Grid import | switch | PV Linkage only: off = PV surplus only, on = the grid tops up the surplus |
-| PV Linkage - Grid import power | number | kW, used while *Grid import* is on and kept while it is off |
+| PV Linkage - Grid import power | number | kW: follows the charger while *Grid import* is on, also when changed in Growatt's settings, and keeps the last value while it is off |
 
 ### Diagnostic
 | Entity | Type | Notes |
@@ -113,6 +113,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Online | binary sensor | off when the status is Unavailable or not a known status |
 | Protection temperature | sensor, °C | internal temperature at which the charger protects itself |
 | Time zone | sensor | the charger's clock; daylight saving start and end (`MM-DD`) as attributes, see *Time zone* |
+| Working mode | enum | the mode the charger runs, as it confirms it: Fast, PV Linkage with grid import or surplus only, Off-peak |
 
 ### Charge modes
 - **Fast**: charges at maximum power, from PV or grid. Can stop at a limit and start at a time
@@ -122,6 +123,7 @@ chargers*) are refused with a message, and the entities keep showing their value
   surplus drops below the minimum. With it on at P kW (*Grid import power*): below the
   minimum, charging starts at the minimum once the surplus exceeds the minimum minus P; at or
   above the minimum, it starts right away at P. A larger surplus raises the power accordingly.
+  The charger applies P in whole amps: 2 kW becomes 1.84 kW (8 A at 230 V).
 - **Off-peak**: charges only in the off-peak slots.
 
 *Charge mode* offers the modes the charger supports. Switching mode from Home Assistant turns
@@ -204,7 +206,8 @@ Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
   settings, the scheduled starts and the charge history only every 5 minutes or right after a
   change made from Home Assistant (the scheduled starts also on every poll while one exists,
-  the history also as soon as a session ends);
+  the history also as soon as a session ends). After a change the settings are read once more
+  about 2 minutes later, since the charger confirms them about a minute after they are sent;
 - logs in only when the session expires, one login at a time, and waits 5 minutes after a
   failed login before trying again;
 - on errors or rate limiting keeps the last values for 5 minutes and slows polling down
@@ -213,6 +216,15 @@ Growatt's servers may rate limit frequent requests. The integration:
 
 If Growatt rejects the login, Home Assistant asks for the password again (*Settings > Devices
 & services*) and stops polling until then, so a wrong password never keeps retrying.
+
+## Troubleshooting
+- An action that fails or is not allowed shows its reason in a message right away.
+- Cloud and connection problems are logged in *Settings > System > Logs*.
+- For more detail, turn on *Enable debug logging* in the integration's menu (*Settings >
+  Devices & services > Growatt THOR EV Charger (Cloud)*), reproduce the problem, then turn it
+  off: Home Assistant downloads the log. It lists every request to Growatt's cloud and its
+  reply, with credentials, the session token and the Wi-Fi name masked; it still contains
+  the account name and the serial number.
 
 ## Time zone
 Off-peak slots, Boost windows and scheduled starts run on the charger's own clock: a time zone

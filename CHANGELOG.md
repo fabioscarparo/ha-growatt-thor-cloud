@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.2
+### New
+- *Working mode* (diagnostic): the mode the charger actually runs, as it confirms it, e.g.
+  PV Linkage with grid import or surplus only.
+
+### Changed
+- Settings are read once more about 2 minutes after a change made from Home Assistant, once
+  the charger has confirmed it (it takes about a minute), instead of up to 5 minutes later.
+- With debug logging enabled, every request to Growatt's cloud and its reply is logged,
+  with credentials, the session token and the Wi-Fi name masked, to diagnose commands the
+  charger rejects.
+- README: a *Troubleshooting* section, and *PV Linkage - Grid import power* follows the
+  charger while grid import is on, also when changed in Growatt's settings.
+
 ## 0.6.1
 ### New
 - *PV Linkage - Grid import*: turns grid import on (at *PV Linkage - Grid import power*) or

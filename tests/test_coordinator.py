@@ -127,3 +127,24 @@ async def test_history_failure_is_not_fatal(hass: HomeAssistant, mock_api) -> No
     entry = await setup_integration(hass)
     assert entry.state is ConfigEntryState.LOADED
     assert state(hass, "sensor", "last_session").state == "unknown"
+
+
+async def test_settings_confirmed_after_write(hass: HomeAssistant, mock_api, freezer) -> None:
+    """After a write the settings are read again once the charger has confirmed it."""
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh_after_write()
+    await hass.async_block_till_done()
+    reads = mock_api.async_get_config.await_count
+
+    freezer.tick(timedelta(seconds=60))
+    await coordinator.async_refresh()
+    assert mock_api.async_get_config.await_count == reads  # Not confirmed yet.
+
+    freezer.tick(timedelta(seconds=60))
+    await coordinator.async_refresh()
+    assert mock_api.async_get_config.await_count == reads + 1  # Confirmed.
+
+    freezer.tick(timedelta(seconds=60))
+    await coordinator.async_refresh()
+    assert mock_api.async_get_config.await_count == reads + 1  # Back to every 5 minutes.
