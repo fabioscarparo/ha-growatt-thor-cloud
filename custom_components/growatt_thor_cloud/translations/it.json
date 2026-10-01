@@ -19,8 +19,8 @@
     },
     "error": {
       "invalid_auth": "Nome utente o password non validi.",
-      "cannot_connect": "Impossibile raggiungere il servizio Growatt delle colonnine.",
-      "no_chargers": "Nessuna colonnina trovata su questo account. Controlla il nome utente."
+      "cannot_connect": "Impossibile raggiungere il servizio Growatt delle wallbox.",
+      "no_chargers": "Nessuna wallbox trovata su questo account. Controlla il nome utente."
     },
     "abort": {
       "already_configured": "Questo account è già configurato.",
@@ -117,7 +117,7 @@
           "preparing": "In preparazione",
           "charging": "In carica",
           "suspended_ev": "Sospesa dal veicolo",
-          "suspended_evse": "Sospesa dalla colonnina",
+          "suspended_evse": "Sospesa dalla wallbox",
           "finishing": "In chiusura",
           "reserved": "Avvio programmato",
           "unavailable": "Non disponibile",
@@ -308,15 +308,15 @@
   },
   "issues": {
     "time_zone_mismatch": {
-      "title": "{name}: orologio della colonnina sfasato",
-      "description": "La colonnina segue l'ora UTC{charger_offset} (fuso {zone}), mentre Home Assistant è a UTC{ha_offset}. Fasce Off-peak, finestre Boost e avvii programmati seguono l'orologio della colonnina, quindi partirebbero all'orario sbagliato.\n\nImposta il fuso orario e il periodo dell'ora legale nelle impostazioni Growatt della colonnina (Informazioni di base). Le date dell'ora legale valgono per un anno alla volta."
+      "title": "{name}: orologio della wallbox sfasato",
+      "description": "La wallbox segue l'ora UTC{charger_offset} (fuso {zone}), mentre Home Assistant è a UTC{ha_offset}. Fasce Off-peak, finestre Boost e avvii programmati seguono l'orologio della wallbox, quindi partirebbero all'orario sbagliato.\n\nImposta il fuso orario e il periodo dell'ora legale nelle impostazioni Growatt della wallbox (Informazioni di base). Le date dell'ora legale valgono per un anno alla volta."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Aggiornamento",
-        "description": "Ogni quanto leggere la colonnina dal cloud Growatt. Intervalli più lunghi inviano meno richieste e riducono il rischio di blocchi.",
+        "description": "Ogni quanto leggere la wallbox dal cloud Growatt. Intervalli più lunghi inviano meno richieste e riducono il rischio di blocchi.",
         "data": {
           "scan_interval": "Intervallo di aggiornamento (secondi)"
         }
@@ -329,8 +329,8 @@
       "description": "Solo in modalità Fast e fuori da una sessione: avvia subito o a un orario (avvio programmato), con un eventuale limite di costo, energia o durata. In modalità RFID è accettato solo l'avvio a un orario.",
       "fields": {
         "device_id": {
-          "name": "Colonnina",
-          "description": "La colonnina THOR."
+          "name": "Wallbox",
+          "description": "La wallbox THOR."
         },
         "limit": {
           "name": "Limite",
@@ -352,11 +352,11 @@
     },
     "cancel_reservation": {
       "name": "Annulla avvio programmato",
-      "description": "Annulla l'avvio programmato della colonnina.",
+      "description": "Annulla l'avvio programmato della wallbox.",
       "fields": {
         "device_id": {
-          "name": "Colonnina",
-          "description": "La colonnina THOR."
+          "name": "Wallbox",
+          "description": "La wallbox THOR."
         }
       }
     },
@@ -365,8 +365,8 @@
       "description": "Attiva o disattiva il Boost in modalità PV Linkage o Off-peak, fuori da una sessione.",
       "fields": {
         "device_id": {
-          "name": "Colonnina",
-          "description": "La colonnina THOR."
+          "name": "Wallbox",
+          "description": "La wallbox THOR."
         },
         "enabled": {
           "name": "Attivo",

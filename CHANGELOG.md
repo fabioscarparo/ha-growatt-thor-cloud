@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+### New
+- *Wallbox card* (beta): a dashboard card drawn with Home Assistant's own elements and theme
+  colors, with the status, charging power, session, alerts, start and stop, unlock and the
+  charge mode, plus where the power comes from when the inverter's sensors are set. It is
+  loaded with the integration: add it from *Add card > THOR Wallbox*.
+
 ## 0.6.4
 ### Fixed
 - After a change made from Home Assistant (e.g. *General - Warm-up*), the entity no longer

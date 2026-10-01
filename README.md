@@ -201,6 +201,36 @@ dashboard settings.
   `energy`; missing values are taken from the Boost settings. The Boost entities follow what
   was sent. Outside a session only.
 
+## Wallbox card (beta)
+The integration comes with a dashboard card for the charger, drawn with Home Assistant's own
+elements and theme colors: status, charging power, the session, alerts, start and stop, unlock
+and the charge mode. It is loaded automatically, with no resource to add, and it updates with
+the integration.
+
+Add it from *Edit dashboard > Add card > THOR Wallbox* and pick the charger: the card
+finds the charger's entities by itself, also after they are renamed. In YAML:
+
+```yaml
+type: custom:thor-wallbox-card
+device_id: <charger device>
+# Optional: where the charging power comes from, with the inverter's power sensors.
+solar_power: sensor.solar_power
+home_power: sensor.home_power          # to work out the solar surplus
+grid_import_power: sensor.grid_import_power
+home_includes_wallbox: true            # false if the home sensor does not measure the charger
+# Optional parts, all shown by default.
+show_session: true
+show_progress: true
+show_controls: true
+show_last_session: true
+```
+
+The controls follow the integration's rules: no remote start or stop in RFID mode, no charge
+mode change while a session is open, and unlock only when the charger allows it.
+
+This is a first version: please report problems and ideas in the
+[issues](https://github.com/fabioscarparo/ha-growatt-thor-cloud/issues).
+
 ## Polling and rate limits
 Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
@@ -259,8 +289,13 @@ is, since the hour of the switch is not known.
   ```bash
   python3 tools/probe_thor.py
   ```
-- Tests (config flow, entities, actions, change rules, clock warning, polling behaviour and
-  API client, against a mocked cloud):
+- `frontend/`: the Wallbox card (TypeScript and Lit). After changing it, rebuild the file the
+  integration serves (`npm run check` type-checks the sources):
+  ```bash
+  cd frontend && npm install && npm run build
+  ```
+- Tests (config flow, entities, actions, change rules, clock warning, Wallbox card, polling
+  behaviour and API client, against a mocked cloud):
   ```bash
   pip install -r requirements_test.txt
   pytest

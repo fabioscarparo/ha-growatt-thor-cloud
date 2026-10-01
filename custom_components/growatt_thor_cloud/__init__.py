@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from .api import GrowattThorApi
+from .card import async_register_card
 from .const import CONF_PASSWORD_HASH, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .coordinator import GrowattThorConfigEntry, GrowattThorCoordinator, clock_issue_id
 from .services import async_setup_services
@@ -29,8 +30,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the actions once; they look up the charger per call."""
+    """Register the actions and the Wallbox card once; both look up the charger per use."""
     async_setup_services(hass)
+    await async_register_card(hass)
     return True
 
 
