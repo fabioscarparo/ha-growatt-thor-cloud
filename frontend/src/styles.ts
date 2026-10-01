@@ -24,8 +24,8 @@ export const cardStyles = css`
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 56px;
-    padding: 0 10px;
+    min-height: 64px;
+    padding: 8px 16px 0;
     box-sizing: border-box;
     cursor: pointer;
     outline: none;
@@ -104,7 +104,7 @@ export const cardStyles = css`
     display: flex;
     align-items: baseline;
     gap: 4px;
-    padding: 0 12px 12px;
+    padding: 0 16px 16px;
     line-height: var(--ha-line-height-condensed, 1.2);
   }
   .value .number {
@@ -118,9 +118,9 @@ export const cardStyles = css`
   .alert {
     position: relative;
     display: flex;
-    margin: 0 12px 12px;
-    padding: 8px;
-    border-radius: var(--ha-border-radius-sm, 4px);
+    margin: 0 16px 16px;
+    padding: 12px;
+    border-radius: var(--ha-border-radius-lg, 12px);
     overflow: hidden;
   }
   .alert::before {
@@ -149,7 +149,7 @@ export const cardStyles = css`
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 0 12px 12px;
+    padding: 0 16px 16px;
   }
   .flow .row {
     display: flex;
@@ -197,13 +197,14 @@ export const cardStyles = css`
   .node.wallbox {
     --node-color: var(--tile-color);
   }
+  /* Centred on the circles, below their 20px label. */
   .line {
     flex: 1;
     max-width: 120px;
     display: flex;
     align-items: center;
-    height: 4px;
-    margin-top: 58px;
+    height: 6px;
+    margin-top: 57px;
     color: var(--disabled-color, #bdbdbd);
     opacity: 0.5;
   }
@@ -216,20 +217,39 @@ export const cardStyles = css`
   .line.grid.active {
     color: var(--energy-grid-consumption-color, #488fc2);
   }
-  .line .segment {
+  .line .track {
+    position: relative;
+    flex: 1;
     height: 1px;
     background: currentColor;
   }
+  /* Runs towards the wallbox, faster as more power flows. */
   .line .dot {
-    flex: none;
-    width: 4px;
-    height: 4px;
-    border-radius: 2px;
+    position: absolute;
+    top: -2px;
+    left: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
     background: currentColor;
-    visibility: hidden;
+    animation: flow var(--flow-duration, 3s) linear infinite;
   }
-  .line.active .dot {
-    visibility: visible;
+  .line.reverse .dot {
+    animation-direction: reverse;
+  }
+  @keyframes flow {
+    from {
+      left: 0;
+    }
+    to {
+      left: calc(100% - 5px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .line .dot {
+      animation: none;
+      left: calc(50% - 2.5px);
+    }
   }
   .flow .note,
   .note {
@@ -243,7 +263,7 @@ export const cardStyles = css`
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    padding: 0 12px 12px;
+    padding: 0 16px 16px;
   }
   .badge {
     display: inline-flex;
@@ -287,7 +307,7 @@ export const cardStyles = css`
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 0 12px 12px;
+    padding: 0 16px 16px;
   }
   .progress .caption {
     display: flex;

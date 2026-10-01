@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+### Changed
+- *Wallbox card*: while power flows, a dot runs along the line from solar or grid towards
+  the wallbox, faster as the power grows.
+- *Wallbox card*: more spacing around the content, and rounder fault, unreachable and RFID
+  boxes.
+
+### Fixed
+- *Wallbox card*: the lines to the wallbox no longer look broken while no power flows.
+
 ## 0.7.0
 ### New
 - *Wallbox card* (beta): a dashboard card drawn with Home Assistant's own elements and theme

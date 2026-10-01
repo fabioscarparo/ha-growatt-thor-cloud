@@ -65,6 +65,18 @@ const MODES: Record<string, { icon: string; color: string }> = {
 const EMPTY_STATES = ["", "unknown", "unavailable", "NoError"];
 // Below this, in W, a source is not feeding the wallbox.
 const MIN_FLOW = 50;
+// A flow's dot crosses its line in 6 s at the lowest power and in 0.75 s at full
+// power (a single-phase wallbox at 32 A).
+const SLOWEST_CROSSING = 6;
+const FASTEST_CROSSING = 0.75;
+const FULL_POWER = 7400;
+
+/** Seconds for the dot to cross a line, in quarter seconds so small changes keep the pace. */
+function flowDuration(watts: number): number {
+  const share = Math.min(1, Math.max(0, (watts - MIN_FLOW) / (FULL_POWER - MIN_FLOW)));
+  const seconds = SLOWEST_CROSSING - share * (SLOWEST_CROSSING - FASTEST_CROSSING);
+  return Math.round(seconds * 4) / 4;
+}
 
 interface Badge {
   icon: string;
@@ -417,11 +429,7 @@ class ThorWallboxCard extends LitElement {
                   <span class="label">${this._t("solar")}</span>
                   <div class="circle">${icon(mdiSolarPower)}<span>${value(solar)}</span></div>
                 </div>
-                <div class="line solar ${fromSolar > MIN_FLOW ? "active" : ""}">
-                  <div class="segment" style="flex: 2"></div>
-                  <div class="dot"></div>
-                  <div class="segment" style="flex: 3"></div>
-                </div>
+                ${this._renderLine("solar", fromSolar, false)}
               `
             : nothing}
           <div class="node wallbox">
@@ -430,11 +438,7 @@ class ThorWallboxCard extends LitElement {
           </div>
           ${config.grid_import_power
             ? html`
-                <div class="line grid ${fromGrid > MIN_FLOW ? "active" : ""}">
-                  <div class="segment" style="flex: 3"></div>
-                  <div class="dot"></div>
-                  <div class="segment" style="flex: 2"></div>
-                </div>
+                ${this._renderLine("grid", fromGrid, true)}
                 <div class="node grid">
                   <span class="label">${this._t("grid")}</span>
                   <div class="circle">${icon(mdiTransmissionTower)}<span>${value(grid)}</span></div>
@@ -443,6 +447,19 @@ class ThorWallboxCard extends LitElement {
             : nothing}
         </div>
         ${note ? html`<p class="note">${note}</p>` : nothing}
+      </div>
+    `;
+  }
+
+  /** A source's link to the wallbox, with a running dot while it feeds the wallbox. */
+  private _renderLine(source: "solar" | "grid", watts: number, towardsLeft: boolean): TemplateResult {
+    const active = watts > MIN_FLOW;
+    return html`
+      <div
+        class="line ${source} ${active ? "active" : ""} ${towardsLeft ? "reverse" : ""}"
+        style=${active ? `--flow-duration: ${flowDuration(watts)}s` : ""}
+      >
+        <div class="track">${active ? html`<span class="dot"></span>` : nothing}</div>
       </div>
     `;
   }
