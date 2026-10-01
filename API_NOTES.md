@@ -119,7 +119,7 @@ Field meanings:
   (-1 or missing = not set); `G_PowerMeterType` = meter model (e.g. `Eastron SDM230`).
 - PV Linkage needs a CT or meter. Minimum charging power: 1.4 kW single-phase, 4.1 kW
   three-phase. `importGrid` 0 = surplus only, charging pauses below the minimum; P kW = grid
-  tops up to P.
+  tops up to P. There is no separate on/off field for grid import.
 
 ## Write
 - Start: `POST /ocpp/cmd/` `{"action":"remoteStartTransaction","chargeId","connectorId","userId","lan"}`.

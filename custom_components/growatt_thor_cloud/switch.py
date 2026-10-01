@@ -21,10 +21,12 @@ from .entity import ThorEntity, check_owner
 from .schedule import (
     BOOST_MODES,
     async_set_boost,
+    async_set_import_grid,
     check_remote_control,
     effective_plan,
     ha_errors,
     is_boost_on,
+    is_import_grid_on,
 )
 
 
@@ -99,6 +101,7 @@ async def async_setup_entry(
     for sn, charger in coordinator.data.items():
         entities.append(ThorChargingSwitch(coordinator, sn))
         entities.append(ThorBoostSwitch(coordinator, sn))
+        entities.append(ThorImportGridSwitch(coordinator, sn))
         for description in CONFIG_SWITCHES:
             if description.supported_fn is None or description.supported_fn(charger):
                 entities.append(ThorConfigSwitch(coordinator, sn, description))
@@ -216,6 +219,41 @@ class ThorBoostSwitch(ThorEntity, SwitchEntity):
     async def _async_set(self, enabled: bool) -> None:
         with ha_errors("Could not set Boost"):
             await async_set_boost(
+                self.coordinator, self._sn, effective_plan(self.coordinator, self._sn), enabled
+            )
+        self.async_write_ha_state()
+        await self.coordinator.async_refresh_after_write()
+
+
+class ThorImportGridSwitch(ThorEntity, SwitchEntity):
+    """PV Linkage: let the grid top up the surplus, at the staged import power.
+
+    Off sends no grid import (surplus only); the power stays staged for the
+    next time it is turned on.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "import_grid")
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.charger.charge_mode.get("mode") == MODE_PV_LINKAGE
+
+    @property
+    def is_on(self) -> bool:
+        return is_import_grid_on(self.charger)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_set(False)
+
+    async def _async_set(self, enabled: bool) -> None:
+        with ha_errors("Could not set grid import"):
+            await async_set_import_grid(
                 self.coordinator, self._sn, effective_plan(self.coordinator, self._sn), enabled
             )
         self.async_write_ha_state()

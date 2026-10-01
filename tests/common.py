@@ -70,3 +70,15 @@ async def enable(hass: HomeAssistant, entry: MockConfigEntry, *entities: tuple[s
         registry.async_update_entity(entity_id(hass, domain, key), disabled_by=None)
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
+
+
+def track_charge_mode(mock_api, **fields) -> dict:
+    """Charge mode that keeps what is written to it, like the real charger."""
+    current = {**CHARGE_MODE, **fields}
+
+    async def write(sn, cid, update) -> None:
+        current.update(update)
+
+    mock_api.async_get_charge_mode.side_effect = lambda sn, cid: dict(current)
+    mock_api.async_set_charge_mode.side_effect = write
+    return current

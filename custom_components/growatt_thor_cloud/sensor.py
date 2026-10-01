@@ -136,20 +136,6 @@ def _session_time(charger: ThorCharger, key: str) -> datetime | None:
     return dt_util.as_utc(parsed)
 
 
-def _last_session_attrs(charger: ThorCharger) -> dict[str, Any]:
-    """Start, duration (minutes), energy (kWh) and cost of the last session."""
-    record = charger.last_session
-    if not record:
-        return {}
-    duration = to_float(record.get("ctime"))
-    return {
-        "start": _session_time(charger, "starttime"),
-        "duration": None if duration is None else int(duration),
-        "energy": to_float(record.get("energy")),
-        "cost": to_float(record.get("cost")),
-    }
-
-
 def _time_zone_attrs(charger: ThorCharger) -> dict[str, Any]:
     """Daylight saving start and end as "MM-DD", None when not set."""
     period = dst_period(charger.config)
@@ -262,12 +248,37 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         suggested_display_precision=0,
         value_fn=_progress,
     ),
-    # End of the last session; the session sensors above reset once it is over.
+    # The last ended session, from the charge history: the session sensors
+    # above reset once a session is over.
     ThorSensorDescription(
         key="last_session",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda c: _session_time(c, "endtime"),
-        attrs_fn=_last_session_attrs,
+    ),
+    ThorSensorDescription(
+        key="last_session_start",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda c: _session_time(c, "starttime"),
+    ),
+    ThorSensorDescription(
+        key="last_session_duration",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        value_fn=lambda c: to_float(c.last_session.get("ctime")),
+    ),
+    ThorSensorDescription(
+        key="last_session_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda c: to_float(c.last_session.get("energy")),
+    ),
+    ThorSensorDescription(
+        key="last_session_cost",
+        device_class=SensorDeviceClass.MONETARY,
+        suggested_display_precision=2,
+        currency_unit="",
+        value_fn=lambda c: to_float(c.last_session.get("cost")),
     ),
     ThorSensorDescription(
         key="next_reservation",

@@ -167,21 +167,19 @@
         "name": "Session - Progress"
       },
       "last_session": {
-        "name": "Session - Last charge",
-        "state_attributes": {
-          "start": {
-            "name": "Start"
-          },
-          "duration": {
-            "name": "Duration (min)"
-          },
-          "energy": {
-            "name": "Energy (kWh)"
-          },
-          "cost": {
-            "name": "Cost"
-          }
-        }
+        "name": "Last charge"
+      },
+      "last_session_start": {
+        "name": "Last charge - Start"
+      },
+      "last_session_duration": {
+        "name": "Last charge - Duration"
+      },
+      "last_session_energy": {
+        "name": "Last charge - Energy"
+      },
+      "last_session_cost": {
+        "name": "Last charge - Cost"
       },
       "next_reservation": {
         "name": "Fast - Next scheduled start"
@@ -246,6 +244,9 @@
       },
       "boost": {
         "name": "Boost"
+      },
+      "import_grid": {
+        "name": "PV Linkage - Grid import"
       },
       "warm_up": {
         "name": "General - Warm-up"

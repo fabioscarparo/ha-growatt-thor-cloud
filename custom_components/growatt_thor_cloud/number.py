@@ -25,11 +25,16 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .api import GrowattThorError
-from .charge_mode import MODE_PV_LINKAGE, charge_mode_fields, format_kw
-from .const import CONNECTOR_ID
+from .charge_mode import MODE_PV_LINKAGE
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import PlanStoredData, ThorEntity, check_owner, to_float
-from .schedule import LIVE_BOOST, async_update_plan, effective_plan, ha_errors
+from .schedule import (
+    LIVE_BOOST,
+    LIVE_IMPORT_GRID,
+    async_update_plan,
+    effective_plan,
+    ha_errors,
+)
 
 # Upper bound for power settings when the charger does not report its rating.
 DEFAULT_MAX_POWER_KW = 22.0
@@ -97,6 +102,10 @@ class ThorPlanNumberDescription(NumberEntityDescription):
     currency: bool = False  # Unit is the charger currency.
     integer: bool = False  # Whole numbers only (minutes).
     live: str | None = None  # Live setting it belongs to (resent while in use).
+    # Upper bound from the charger's data, instead of native_max_value.
+    max_fn: Callable[[ThorCharger], float] | None = None
+    # When set, the number is available only while this returns True.
+    available_fn: Callable[[ThorCharger], bool] | None = None
 
 
 # Any cost or energy above 0 is valid, with no upper bound; HA needs one, so it
@@ -145,6 +154,22 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         mode=NumberMode.BOX,
         live=LIVE_BOOST,
     ),
+    # PV Linkage: grid power topping up the surplus while *Grid import* is on.
+    # With P below the minimum charging power (1.4 kW single-phase, 4.1 kW
+    # three-phase) charging starts at the minimum once the surplus exceeds the
+    # minimum minus P; with P at or above it, it starts right away at P.
+    ThorPlanNumberDescription(
+        key="import_grid_power",
+        plan_field="import_grid",
+        device_class=NumberDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        native_min_value=0.1,
+        native_step=0.1,
+        mode=NumberMode.BOX,
+        live=LIVE_IMPORT_GRID,
+        max_fn=lambda c: c.rated_power_kw or DEFAULT_MAX_POWER_KW,
+        available_fn=lambda c: c.charge_mode.get("mode") == MODE_PV_LINKAGE,
+    ),
 )
 
 
@@ -153,12 +178,11 @@ async def async_setup_entry(
     entry: GrowattThorConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Per charger: numeric settings, the PV Linkage grid import and staged plan values."""
+    """Per charger: numeric settings and staged plan values."""
     coordinator = entry.runtime_data
     entities: list[NumberEntity] = []
     for sn in coordinator.data:
         entities.extend(ThorNumber(coordinator, sn, description) for description in NUMBERS)
-        entities.append(ThorImportGridNumber(coordinator, sn))
         entities.extend(
             ThorPlanNumber(coordinator, sn, description) for description in PLAN_NUMBERS
         )
@@ -194,45 +218,6 @@ class ThorNumber(ThorEntity, NumberEntity):
         await self.coordinator.async_refresh_after_write()
 
 
-class ThorImportGridNumber(ThorEntity, NumberEntity):
-    """Grid power allowed to top up PV surplus in PV Linkage (0 = surplus only).
-
-    With 0 kW charging pauses when surplus drops below the 1.4 kW minimum
-    (4.1 kW three-phase); with P kW the grid supplies up to P to keep charging.
-    """
-
-    _attr_device_class = NumberDeviceClass.POWER
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
-    _attr_native_min_value = 0
-    _attr_native_step = 0.1
-    _attr_mode = NumberMode.BOX
-
-    def __init__(self, coordinator, sn: str) -> None:
-        super().__init__(coordinator, sn, "import_grid_power")
-        self._attr_native_max_value = self.charger.rated_power_kw or DEFAULT_MAX_POWER_KW
-
-    @property
-    def available(self) -> bool:
-        # Only meaningful while in PV Linkage.
-        return super().available and self.charger.charge_mode.get("mode") == MODE_PV_LINKAGE
-
-    @property
-    def native_value(self) -> float | None:
-        return to_float(self.charger.charge_mode.get("importGrid"))
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Resend the PV Linkage mode object with the new grid import."""
-        with ha_errors("Could not set grid import"):
-            fields = charge_mode_fields(
-                self.charger, MODE_PV_LINKAGE, importGrid=format_kw(value)
-            )
-            await self.coordinator.api.async_set_charge_mode(self._sn, CONNECTOR_ID, fields)
-        self.charger.charge_mode.update(fields)
-        self.async_write_ha_state()
-        await self.coordinator.async_refresh_after_write()
-
-
 class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
     """Number for a staged plan value; the value survives restarts."""
 
@@ -242,6 +227,13 @@ class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
     def __init__(self, coordinator, sn: str, description: ThorPlanNumberDescription) -> None:
         super().__init__(coordinator, sn, description.key)
         self.entity_description = description
+        if description.max_fn is not None:
+            self._attr_native_max_value = description.max_fn(self.charger)
+
+    @property
+    def available(self) -> bool:
+        available_fn = self.entity_description.available_fn
+        return super().available and (available_fn is None or available_fn(self.charger))
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

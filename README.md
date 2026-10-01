@@ -51,8 +51,8 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 ## Entities
 Home Assistant lists a device's entities alphabetically within each section, so names carry a
 group prefix: **General - ...** (every mode), **Fast - ...**, **PV Linkage - ...**,
-**Off-peak - ...**, **Boost ...** (PV Linkage and Off-peak), **Session - ...** and
-**Advanced - ...**. Commands that do not apply to the current mode are shown as unavailable.
+**Off-peak - ...**, **Boost ...** (PV Linkage and Off-peak), **Session - ...**, **Last
+charge ...** and **Advanced - ...**. Commands that do not apply to the current mode are shown as unavailable.
 Changes that are not allowed right now (see *During a session* and *RFID mode and shared
 chargers*) are refused with a message, and the entities keep showing their values.
 
@@ -72,9 +72,10 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Cable lock | binary sensor | on = unlocked |
 | Current, Voltage | sensor | |
 | Fast - Next scheduled start | timestamp | `every_day`, `limit`, `limit_value` attributes |
+| Last charge | timestamp | end of the last session |
+| Last charge - Cost, Duration, Energy, Start | sensor | the last session, still shown once the session sensors reset |
 | Power | sensor, W | computed as voltage x current (single-phase) |
 | Session - Cost, Duration, Energy | sensor | reset at each session |
-| Session - Last charge | timestamp | end of the last session; `start`, `duration` (min), `energy` (kWh) and `cost` attributes |
 | Session - Limit | enum | limit of the current session; value in the `value` attribute |
 | Session - Progress | sensor, % | how much of the session's limit, or of the smart Boost energy, is reached; unknown without one |
 | Status | enum | connector status; a pending scheduled start reads as *Scheduled start* |
@@ -99,7 +100,8 @@ chargers*) are refused with a message, and the entities keep showing their value
 | General - Max current | number | 6-32 A; up to 16 A on 3.6 kW and 11 kW chargers |
 | General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |
 | Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
-| PV Linkage - Grid import power | number | kW, PV Linkage only: 0 = PV surplus only |
+| PV Linkage - Grid import | switch | PV Linkage only: off = PV surplus only, on = the grid tops up the surplus |
+| PV Linkage - Grid import power | number | kW, used while *Grid import* is on and kept while it is off |
 
 ### Diagnostic
 | Entity | Type | Notes |
@@ -116,15 +118,15 @@ chargers*) are refused with a message, and the entities keep showing their value
 - **Fast**: charges at maximum power, from PV or grid. Can stop at a limit and start at a time
   (see *Scheduled charging*).
 - **PV Linkage**: charges with PV surplus; needs a CT or meter. The minimum charging power is
-  1.4 kW single-phase (4.1 kW three-phase). With *Grid import power* at 0, charging pauses when
-  the surplus drops below the minimum. With P kW below the minimum, charging starts at the
-  minimum once the surplus exceeds the minimum minus P; with P at or above the minimum it
-  starts right away at P. A larger surplus raises the power accordingly.
+  1.4 kW single-phase (4.1 kW three-phase). With *Grid import* off, charging pauses when the
+  surplus drops below the minimum. With it on at P kW (*Grid import power*): below the
+  minimum, charging starts at the minimum once the surplus exceeds the minimum minus P; at or
+  above the minimum, it starts right away at P. A larger surplus raises the power accordingly.
 - **Off-peak**: charges only in the off-peak slots.
 
 *Charge mode* offers the modes the charger supports. Switching mode from Home Assistant turns
-Boost off, and PV Linkage then starts without grid import (set *PV Linkage - Grid import
-power* afterwards). PV Linkage needs a grid sampling device (CT or meter) set on the charger.
+Boost off, and PV Linkage then starts without grid import (turn on *PV Linkage - Grid import*
+afterwards). PV Linkage needs a grid sampling device (CT or meter) set on the charger.
 After switching to PV Linkage or Off-peak, plug the cable in again if charging does not start
 by itself.
 
@@ -134,9 +136,9 @@ session. *General - Load balancing* is not available in PV Linkage.
 ### During a session
 While a session is open (charging, suspended or finishing), the charge mode and its settings
 stay as they are until it ends. Changing *Charge mode*, *Boost* and its settings, *PV Linkage -
-Grid import power* or the Off-peak slots is refused with a message, and *Fast - Start
-scheduled charge* is unavailable. Settings that are only staged in Home Assistant (Boost while
-off, Off-peak slots outside Off-peak) can still be prepared.
+Grid import* and its power or the Off-peak slots is refused with a message, and *Fast - Start
+scheduled charge* is unavailable. Settings that are only staged in Home Assistant (Boost and
+grid import power while off, Off-peak slots outside Off-peak) can still be prepared.
 
 ### RFID mode and shared chargers
 With *General - Authorization mode* set to RFID, sessions start and stop with a card: the

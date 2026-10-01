@@ -1,4 +1,4 @@
-"""Scheduled starts (session limits, reservations) and Boost.
+"""Scheduled starts (session limits, reservations), Boost, grid import, Off-peak slots.
 
 Entities stage values in a ChargePlan; the dashboard buttons and switches and
 the actions all send them through these helpers, so both behave the same.
@@ -23,9 +23,11 @@ from .charge_mode import (
     charge_mode_fields,
     check_mode_change,
     cheapest_period_time,
+    format_kw,
 )
 from .const import CONNECTOR_ID, LIMIT_COST, LIMIT_DURATION, LIMIT_ENERGY
 from .coordinator import ChargePlan, GrowattThorCoordinator, ThorCharger
+from .entity import to_float
 
 # Plan limit type -> session limit key (cKey), and back.
 LIMIT_KEYS = {"cost": LIMIT_COST, "energy": LIMIT_ENERGY, "duration": LIMIT_DURATION}
@@ -157,9 +159,10 @@ def boost_params(charger: ThorCharger) -> dict[str, str]:
 def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
     """The staged plan, aligned with the charger where it matters.
 
-    Boost settings follow the charger while Boost runs, off-peak slots while in
-    Off-peak (and until the user stages their own): entities stay truthful and
-    edits start from what the charger actually does.
+    Boost settings follow the charger while Boost runs, the grid import while
+    it is on, off-peak slots while in Off-peak (and until the user stages
+    their own): entities stay truthful and edits start from what the charger
+    actually does.
     """
     plan = coordinator.plan(sn)
     charger = coordinator.data.get(sn)
@@ -168,6 +171,8 @@ def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
     _sync_off_peak(plan, charger)
     if is_boost_on(charger):
         _sync_boost(plan, charger)
+    if is_import_grid_on(charger):
+        plan.import_grid = to_float(charger.charge_mode.get("importGrid"))
     return plan
 
 
@@ -307,11 +312,45 @@ async def async_set_off_peak(
     charger.charge_mode.update(fields)
 
 
+# --- Grid import (PV Linkage) ---------------------------------------------
+
+
+def is_import_grid_on(charger: ThorCharger) -> bool:
+    """PV Linkage with grid import: the grid tops up the surplus (importGrid > 0)."""
+    return (
+        charger.charge_mode.get("mode") == MODE_PV_LINKAGE
+        and (to_float(charger.charge_mode.get("importGrid")) or 0) > 0
+    )
+
+
+def import_grid_fields(charger: ThorCharger, plan: ChargePlan, enabled: bool) -> dict[str, Any]:
+    """PV Linkage update with grid import on, at the plan's power, or off (surplus only)."""
+    if charger.charge_mode.get("mode") != MODE_PV_LINKAGE:
+        raise PlanError("Grid import is only available in PV Linkage")
+    check_mode_change(charger)
+    if not enabled:
+        return charge_mode_fields(charger, MODE_PV_LINKAGE, importGrid="0")
+    if not plan.import_grid:
+        raise PlanError("Set the grid import power first")
+    return charge_mode_fields(charger, MODE_PV_LINKAGE, importGrid=format_kw(plan.import_grid))
+
+
+async def async_set_import_grid(
+    coordinator: GrowattThorCoordinator, sn: str, plan: ChargePlan, enabled: bool
+) -> None:
+    """Send grid import on/off and mirror it locally until the next refresh."""
+    charger = coordinator.data[sn]
+    fields = import_grid_fields(charger, plan, enabled)
+    await coordinator.api.async_set_charge_mode(sn, CONNECTOR_ID, fields)
+    charger.charge_mode.update(fields)
+
+
 # --- Staged values --------------------------------------------------------
 
 # Which live setting a staged value belongs to: resent at once while in use.
 LIVE_BOOST = "boost"
 LIVE_OFF_PEAK = "off_peak"
+LIVE_IMPORT_GRID = "import_grid"
 
 
 async def async_update_plan(
@@ -321,13 +360,17 @@ async def async_update_plan(
     value: Any,
     live: str | None = None,
 ) -> None:
-    """Stage one plan value; Boost and off-peak settings are resent while in use."""
+    """Stage one plan value; Boost, grid import and off-peak settings are resent while
+    in use."""
     plan = effective_plan(coordinator, sn)
     charger = coordinator.data[sn]
     updated = replace(plan, **{field: value})
     sent = False
     if live == LIVE_BOOST and is_boost_on(charger):
         await async_set_boost(coordinator, sn, updated, True)
+        sent = True
+    elif live == LIVE_IMPORT_GRID and is_import_grid_on(charger):
+        await async_set_import_grid(coordinator, sn, updated, True)
         sent = True
     elif live == LIVE_OFF_PEAK and charger.charge_mode.get("mode") == MODE_OFF_PEAK:
         await async_set_off_peak(coordinator, sn, updated)

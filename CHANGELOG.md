@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1
+### New
+- *PV Linkage - Grid import*: turns grid import on (at *PV Linkage - Grid import power*) or
+  off (PV surplus only). The power is kept in Home Assistant while grid import is off, and
+  is sent right away while it is on.
+
+### Changed
+- The last session has its own entities: *Last charge* (end), *Last charge - Start*,
+  *Duration*, *Energy* and *Cost*, instead of attributes of *Session - Last charge*.
+
 ## 0.6.0
 ### New
 - *Unlock connector*: unlocks the cable at the charger while no charge is in progress.

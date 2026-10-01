@@ -167,21 +167,19 @@
         "name": "Sessione - Avanzamento"
       },
       "last_session": {
-        "name": "Sessione - Ultima ricarica",
-        "state_attributes": {
-          "start": {
-            "name": "Inizio"
-          },
-          "duration": {
-            "name": "Durata (min)"
-          },
-          "energy": {
-            "name": "Energia (kWh)"
-          },
-          "cost": {
-            "name": "Costo"
-          }
-        }
+        "name": "Ultima ricarica"
+      },
+      "last_session_start": {
+        "name": "Ultima ricarica - Inizio"
+      },
+      "last_session_duration": {
+        "name": "Ultima ricarica - Durata"
+      },
+      "last_session_energy": {
+        "name": "Ultima ricarica - Energia"
+      },
+      "last_session_cost": {
+        "name": "Ultima ricarica - Costo"
       },
       "next_reservation": {
         "name": "Fast - Prossimo avvio programmato"
@@ -246,6 +244,9 @@
       },
       "boost": {
         "name": "Boost"
+      },
+      "import_grid": {
+        "name": "PV Linkage - Importa da rete"
       },
       "warm_up": {
         "name": "Generale - Warm-up"

@@ -92,10 +92,11 @@ class ThorCharger:
 
 @dataclass
 class ChargePlan:
-    """Values staged in HA for the next scheduled start and for Boost.
+    """Values staged in HA for the next scheduled start, Boost and grid import.
 
-    The charger only learns them when a start is requested or Boost is turned
-    on; until then they live here (and in the entities' restored state).
+    The charger only learns them when a start is requested or Boost or grid
+    import is turned on; until then they live here (and in the entities'
+    restored state).
     None means "not set yet": the charger keeps no such values, so none are
     invented; using an unset value is reported as an error.
     """
@@ -111,6 +112,8 @@ class ChargePlan:
     boost_to: time | None = None
     boost_departure: time | None = None  # smart: energy guaranteed by this time
     boost_energy: float | None = None  # smart: kWh
+    # PV Linkage: grid power topping up the surplus while grid import is on, kW.
+    import_grid: float | None = None
     # Off-peak slots; a slot whose start equals its end is unused ("00:00-00:00").
     off_peak_1_from: time = time(0, 0)
     off_peak_1_to: time = time(0, 0)

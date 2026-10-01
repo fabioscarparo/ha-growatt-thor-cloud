@@ -25,6 +25,7 @@ from .common import (
     set_connector,
     setup_integration,
     state as _state,
+    track_charge_mode,
 )
 from .conftest import CHARGE_MODE, CONFIG, SN
 
@@ -85,7 +86,8 @@ async def test_entities(hass: HomeAssistant, mock_api) -> None:
     assert state("switch", "warm_up") == "off"
     assert state("button", "unlock") == "unavailable"  # Not while charging.
     assert state("number", "max_current") == "32.0"
-    assert state("number", "import_grid_power") == "0.0"
+    assert state("switch", "import_grid") == "off"  # importGrid 0: surplus only.
+    assert state("number", "import_grid_power") == "unknown"  # Nothing staged yet.
     assert _state(hass, "number", "import_grid_power").attributes["max"] == 7.0
     assert state("select", "charge_mode") == "pv_linkage"
     assert _state(hass, "select", "charge_mode").attributes["options"] == [
@@ -215,10 +217,18 @@ async def test_charge_mode_fast(hass: HomeAssistant, mock_api) -> None:
     mock_api.async_set_charge_mode.assert_awaited_once_with(SN, 1, {"mode": "fast"})
 
 
-async def test_import_grid_power(hass: HomeAssistant, mock_api) -> None:
-    """Grid import resends the PV Linkage object with the meter setup from the config."""
+async def test_import_grid(hass: HomeAssistant, mock_api) -> None:
+    """Grid import sends the staged power with the PV Linkage object; off sends 0."""
+    track_charge_mode(mock_api)
     await setup_integration(hass)
+    with pytest.raises(ServiceValidationError, match="power first"):
+        await _call(hass, "switch", "turn_on", "import_grid")
+
+    # Off: the power is only staged.
     await _call(hass, "number", "set_value", "import_grid_power", value=1.4)
+    mock_api.async_set_charge_mode.assert_not_awaited()
+
+    await _call(hass, "switch", "turn_on", "import_grid")
     mock_api.async_set_charge_mode.assert_awaited_once_with(
         SN,
         1,
@@ -232,6 +242,23 @@ async def test_import_grid_power(hass: HomeAssistant, mock_api) -> None:
             "importGrid": "1.4",
         },
     )
+    assert _state(hass, "switch", "import_grid").state == "on"
+
+
+async def test_import_grid_running(hass: HomeAssistant, mock_api) -> None:
+    """While on, the power shows the charger's value and edits are sent at once."""
+    track_charge_mode(mock_api, importGrid=1.5)
+    await setup_integration(hass)
+    assert _state(hass, "switch", "import_grid").state == "on"
+    assert _state(hass, "number", "import_grid_power").state == "1.5"
+
+    await _call(hass, "number", "set_value", "import_grid_power", value=2)
+    assert mock_api.async_set_charge_mode.await_args.args[2]["importGrid"] == "2"
+
+    await _call(hass, "switch", "turn_off", "import_grid")
+    assert mock_api.async_set_charge_mode.await_args.args[2]["importGrid"] == "0"
+    # The power stays staged for the next time.
+    assert _state(hass, "number", "import_grid_power").state == "2.0"
 
 
 async def test_import_grid_power_unavailable_outside_pv_linkage(
@@ -241,6 +268,7 @@ async def test_import_grid_power_unavailable_outside_pv_linkage(
     mock_api.async_get_charge_mode.side_effect = lambda sn, cid: {**CHARGE_MODE, "mode": "fast"}
     await setup_integration(hass)
     assert _state(hass, "number", "import_grid_power").state == "unavailable"
+    assert _state(hass, "switch", "import_grid").state == "unavailable"
 
 
 async def test_charge_mode_off_peak(hass: HomeAssistant, mock_api) -> None:
@@ -322,14 +350,13 @@ async def test_last_session(hass: HomeAssistant, mock_api) -> None:
     """The last ended session stays visible after the live session values reset."""
     mock_api.async_get_sessions.side_effect = lambda sn, count: [dict(SESSION)]
     await setup_integration(hass)
-    sensor = _state(hass, "sensor", "last_session")
-    assert sensor.state == "2026-07-18T10:59:15+00:00"
-    assert sensor.attributes["start"].isoformat() == "2026-07-18T10:45:40+00:00"
-    assert (
-        sensor.attributes["duration"],
-        sensor.attributes["energy"],
-        sensor.attributes["cost"],
-    ) == (13, 0.733, 0.11)
+    # Times are on the charger's clock (UTC+2 in the fixture).
+    assert _state(hass, "sensor", "last_session").state == "2026-07-18T10:59:15+00:00"
+    assert _state(hass, "sensor", "last_session_start").state == "2026-07-18T10:45:40+00:00"
+    assert _state(hass, "sensor", "last_session_duration").state == "13.0"
+    assert _state(hass, "sensor", "last_session_energy").state == "0.733"
+    cost = _state(hass, "sensor", "last_session_cost")
+    assert (cost.state, cost.attributes["unit_of_measurement"]) == ("0.11", "EUR")
 
 
 async def test_last_session_read_when_charging_ends(hass: HomeAssistant, mock_api) -> None:

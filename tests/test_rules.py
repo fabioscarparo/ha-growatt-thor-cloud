@@ -33,16 +33,21 @@ def _device_id(hass: HomeAssistant) -> str:
 async def test_mode_locked_during_session(hass: HomeAssistant, mock_api) -> None:
     """While charging the mode and its settings are refused, but stay visible."""
     set_charging(mock_api)
-    set_charge_mode(mock_api, boost=1, boostType="smart", config="contime=07:30&energy=15")
+    set_charge_mode(
+        mock_api, boost=1, boostType="smart", config="contime=07:30&energy=15", importGrid=1.0
+    )
     await setup_integration(hass)
     assert state(hass, "select", "charge_mode").state == "pv_linkage"
     assert state(hass, "switch", "boost").state == "on"
+    assert state(hass, "switch", "import_grid").state == "on"
 
     for domain, service, key, data in (
         ("select", "select_option", "charge_mode", {"option": "fast"}),
         ("switch", "turn_off", "boost", {}),
+        ("switch", "turn_off", "import_grid", {}),
+        # Live while their switches are on.
         ("number", "set_value", "import_grid_power", {"value": 1.4}),
-        ("number", "set_value", "boost_energy", {"value": 20}),  # Live while Boost runs.
+        ("number", "set_value", "boost_energy", {"value": 20}),
     ):
         with pytest.raises(ServiceValidationError, match="Stop charging"):
             await call(hass, domain, service, key, **data)
