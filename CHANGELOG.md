@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+### Fixed
+- *Wallbox card*: Home Assistant now finds the card also when it loads before the dashboard.
+  It showed "Custom element doesn't exist: thor-wallbox-card" and was missing from *Add card*.
+
 ## 0.7.1
 ### Changed
 - *Wallbox card*: while power flows, a dot runs along the line from solar or grid towards

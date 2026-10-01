@@ -34,6 +34,7 @@ import {
   powerInWatts,
 } from "./format";
 import { localize, type StringKey } from "./localize";
+import { defineElement } from "./register";
 import { cardStyles } from "./styles";
 import type { HassEntity, HomeAssistant, WallboxCardConfig } from "./types";
 
@@ -792,9 +793,7 @@ class ThorWallboxCard extends LitElement {
   };
 }
 
-if (!customElements.get("thor-wallbox-card")) {
-  customElements.define("thor-wallbox-card", ThorWallboxCard);
-}
+defineElement("thor-wallbox-card", ThorWallboxCard);
 
 const customCards = ((window as unknown as { customCards?: Record<string, unknown>[] }).customCards ??= []);
 if (!customCards.some((card) => card.type === "thor-wallbox-card")) {

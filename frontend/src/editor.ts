@@ -2,6 +2,7 @@ import { LitElement, html, nothing } from "lit";
 import { mdiFormatListBulleted, mdiHomeLightningBoltOutline } from "@mdi/js";
 import { DOMAIN } from "./entities";
 import { hasString, localize } from "./localize";
+import { defineElement } from "./register";
 import type { HomeAssistant, WallboxCardConfig } from "./types";
 
 // Options left out of the YAML while they keep these values.
@@ -125,6 +126,4 @@ class ThorWallboxCardEditor extends LitElement {
   }
 }
 
-if (!customElements.get("thor-wallbox-card-editor")) {
-  customElements.define("thor-wallbox-card-editor", ThorWallboxCardEditor);
-}
+defineElement("thor-wallbox-card-editor", ThorWallboxCardEditor);
