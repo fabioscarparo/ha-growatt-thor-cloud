@@ -119,12 +119,15 @@ chargers*) are refused with a message, and the entities keep showing their value
 ### Charge modes
 - **Fast**: charges at maximum power, from PV or grid. Can stop at a limit and start at a time
   (see *Scheduled charging*).
-- **PV Linkage**: charges with PV surplus; needs a CT or meter. The minimum charging power is
-  1.4 kW single-phase (4.1 kW three-phase). With *Grid import* off, charging pauses when the
-  surplus drops below the minimum. With it on at P kW (*Grid import power*): below the
-  minimum, charging starts at the minimum once the surplus exceeds the minimum minus P; at or
-  above the minimum, it starts right away at P. A larger surplus raises the power accordingly.
-  The charger applies P in whole amps: 2 kW becomes 1.84 kW (8 A at 230 V).
+- **PV Linkage**: charges with PV surplus, the power that would otherwise go to the grid, as
+  measured by the CT or meter at the grid connection. A home battery comes first: while it
+  charges, the inverter keeps the export close to zero, so charging usually starts once the
+  battery is full. The minimum charging power is 1.4 kW single-phase (4.1 kW three-phase).
+  With *Grid import* off, charging pauses when the surplus drops below the minimum. With it
+  on at P kW (*Grid import power*): below the minimum, charging starts at the minimum once
+  the surplus exceeds the minimum minus P; at or above the minimum, it starts right away at
+  P. A larger surplus raises the power accordingly. The charger applies P in whole amps:
+  2 kW becomes 1.84 kW (8 A at 230 V).
 - **Off-peak**: charges only in the off-peak slots.
 
 *Charge mode* offers the modes the charger supports. Switching mode from Home Assistant turns
@@ -247,6 +250,34 @@ mode change while a session is open, and unlock only when the charger allows it.
 This is a first version: please report problems and ideas in the
 [issues](https://github.com/fabioscarparo/ha-growatt-thor-cloud/issues).
 
+## Energy dashboard
+*Energy charged today* can be added to Home Assistant's energy dashboard: in the
+[energy configuration](https://my.home-assistant.io/redirect/config_energy/), under
+*Individual electrical devices*, select *Add device* and pick it. It counts the energy charged
+since local midnight, so a session that runs past midnight is split between the two days.
+
+The charger is already part of the home consumption measured at the grid connection: as an
+individual device it shows the charger's share, without adding to the total.
+
+For weekly, monthly or yearly totals, create a *Utility Meter* helper (*Settings > Devices &
+services > Helpers > Create helper*) with *Energy charged today* as the input sensor and the
+reset cycle you need. Keep *Periodically resetting* on, since the sensor starts again at
+midnight.
+
+A bar chart of the energy charged per day:
+
+```yaml
+type: statistics-graph
+title: Energy charged per day
+entities:
+  - sensor.<charger>_energy_charged_today
+chart_type: bar
+period: day
+stat_types:
+  - change
+days_to_show: 30
+```
+
 ## Polling and rate limits
 Growatt's servers may rate limit frequent requests. The integration:
 - polls every 60 s by default (*Configure* on the integration: 30-600 s), and reads the charger
@@ -306,7 +337,8 @@ is, since the hour of the switch is not known.
   python3 tools/probe_thor.py
   ```
 - `frontend/`: the Wallbox card (TypeScript and Lit). After changing it, rebuild the file the
-  integration serves (`npm run check` type-checks the sources):
+  integration serves (`npm run check` type-checks the sources, `npm test` runs the card's
+  tests, such as where the charging power comes from and the surplus):
   ```bash
   cd frontend && npm install && npm run build
   ```
