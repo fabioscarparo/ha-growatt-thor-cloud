@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2
+### Changed
+- *Wallbox card*: no longer marked as beta.
+- README: the card images show the home battery; *Charge modes* explains that a charging home
+  battery takes the PV Linkage surplus first; a new *Energy dashboard* section shows how to
+  add *Energy charged today* and get monthly totals.
+
+### Fixed
+- *Wallbox card*: the help (?) button in the card editor opens the card's section of the
+  README again; it pointed to the section's former title.
+
 ## 0.8.1
 ### Fixed
 - *Energy charged today*: a session open at midnight was counted twice, on the day before
