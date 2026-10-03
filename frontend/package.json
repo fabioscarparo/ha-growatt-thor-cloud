@@ -7,13 +7,15 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "node test.mjs"
   },
   "dependencies": {
     "@mdi/js": "^7.4.47",
     "lit": "^3.3.3"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   }
