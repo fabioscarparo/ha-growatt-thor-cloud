@@ -181,6 +181,9 @@
       "last_session_cost": {
         "name": "Ultima ricarica - Costo"
       },
+      "today_energy": {
+        "name": "Energia caricata oggi"
+      },
       "next_reservation": {
         "name": "Fast - Prossimo avvio programmato"
       },

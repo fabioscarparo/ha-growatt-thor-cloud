@@ -71,6 +71,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 |---|---|---|
 | Cable lock | binary sensor | on = unlocked |
 | Current, Voltage | sensor | |
+| Energy charged today | sensor, kWh | sessions that ended today plus the one in progress; a session counts on the day it ends; starts again at midnight |
 | Fast - Next scheduled start | timestamp | `every_day`, `limit`, `limit_value` attributes |
 | Last charge | timestamp | end of the last session |
 | Last charge - Cost, Duration, Energy, Start | sensor | the last session, still shown once the session sensors reset |
@@ -220,8 +221,12 @@ type: custom:thor-wallbox-card
 device_id: <charger device>
 # Optional: where the charging power comes from, with the inverter's power sensors.
 solar_power: sensor.solar_power
-home_power: sensor.home_power          # to work out the solar surplus
+home_power: sensor.home_power          # without the export sensor, to work out the surplus
 grid_import_power: sensor.grid_import_power
+grid_export_power: sensor.grid_export_power
+battery_power: sensor.battery_power    # home battery, positive while discharging
+battery_charging_positive: false       # true if the battery sensor is positive while charging
+battery_soc: sensor.battery_soc
 home_includes_wallbox: true            # false if the home sensor does not measure the charger
 # Optional parts, all shown by default.
 show_session: true
@@ -229,6 +234,12 @@ show_progress: true
 show_controls: true
 show_last_session: true
 ```
+
+With the grid export sensor, the surplus in PV Linkage is the power that would go to the grid,
+the one the charger sees: a home battery that is charging takes the surplus first. The battery
+is shown below the wallbox, linked to solar while it charges from it and to the wallbox while
+it feeds the car. While the car charges, the card splits the charging power between solar,
+battery and grid, after the rest of the home has taken its share.
 
 The controls follow the integration's rules: no remote start or stop in RFID mode, no charge
 mode change while a session is open, and unlock only when the charger allows it.

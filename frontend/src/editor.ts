@@ -8,12 +8,21 @@ import type { HomeAssistant, WallboxCardConfig } from "./types";
 // Options left out of the YAML while they keep these values.
 const DEFAULTS: Partial<WallboxCardConfig> = {
   home_includes_wallbox: true,
+  battery_charging_positive: false,
   show_session: true,
   show_progress: true,
   show_controls: true,
   show_last_session: true,
 };
-const OPTIONAL_TEXT = ["name", "solar_power", "home_power", "grid_import_power"];
+const OPTIONAL_TEXT = [
+  "name",
+  "solar_power",
+  "home_power",
+  "grid_import_power",
+  "grid_export_power",
+  "battery_power",
+  "battery_soc",
+];
 
 /**
  * Make sure Home Assistant's form is loaded: it comes with the editors of the
@@ -79,6 +88,13 @@ class ThorWallboxCardEditor extends LitElement {
           { name: "solar_power", selector: power },
           { name: "home_power", selector: power },
           { name: "grid_import_power", selector: power },
+          { name: "grid_export_power", selector: power },
+          { name: "battery_power", selector: power },
+          { name: "battery_charging_positive", selector: { boolean: {} } },
+          {
+            name: "battery_soc",
+            selector: { entity: { filter: { domain: "sensor", device_class: "battery" } } },
+          },
           { name: "home_includes_wallbox", selector: { boolean: {} } },
         ],
       },

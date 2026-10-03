@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0
+### New
+- *Energy charged today* (sensor, kWh, `state_class: total`): energy of the sessions that
+  ended today plus the session in progress. A session is counted on the day it ends; the
+  value resets at local midnight (`last_reset`).
+- *Wallbox card*: home battery support with the `battery_power`, `battery_charging_positive`
+  and `battery_soc` options. The battery is drawn below the wallbox with its state of charge
+  and power, linked to solar while it charges from solar and to the wallbox while it supplies
+  the car.
+- *Wallbox card*: `grid_export_power` option.
+
+### Changed
+- *Wallbox card*: with `grid_export_power` set, the PV Linkage surplus is the power exported
+  to the grid, which is the value the charger reads from the meter, so a charging home battery
+  lowers it. Without it, the surplus is estimated as solar production minus the home
+  consumption (wallbox excluded) and the battery charging power.
+- *Wallbox card*: while charging, the charging power is split between solar, battery and grid.
+  The rest of the home is supplied first, from solar, then the battery, then the grid; the
+  wallbox gets what is left.
+
 ## 0.7.2
 ### Fixed
 - *Wallbox card*: Home Assistant now finds the card also when it loads before the dashboard.

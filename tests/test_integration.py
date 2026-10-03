@@ -379,6 +379,43 @@ async def test_last_session_read_when_charging_ends(hass: HomeAssistant, mock_ap
     assert _state(hass, "sensor", "last_session").state == "2026-07-18T10:59:15+00:00"
 
 
+async def test_today_energy(hass: HomeAssistant, mock_api, freezer) -> None:
+    """Today's sessions and the open one add up, once each, and the total starts again daily."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-07-18 20:00:00+02:00")
+    history = [
+        {**SESSION, "transactionId": 11, "endtime": "2026-07-18 12:59:15", "energy": 0.733},
+        {**SESSION, "transactionId": 10, "endtime": "2026-07-18 08:10:00", "energy": 5.0},
+        # Ended yesterday on the charger's clock (UTC+2 in the fixture).
+        {**SESSION, "transactionId": 9, "endtime": "2026-07-17 23:30:00", "energy": 7.0},
+    ]
+    mock_api.async_get_sessions.side_effect = lambda sn, count: [dict(s) for s in history]
+    set_charging(mock_api)  # Transaction 1234, 3.5 kWh so far.
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+
+    energy = _state(hass, "sensor", "today_energy")
+    assert energy.state == "9.233"
+    assert energy.attributes["state_class"] == "total"
+    assert energy.attributes["last_reset"] == "2026-07-18T00:00:00+02:00"
+
+    # The session ends and reaches the history: it is counted once.
+    history.insert(
+        0, {**SESSION, "transactionId": 1234, "endtime": "2026-07-18 19:59:00", "energy": 3.6}
+    )
+    set_connector(mock_api, status="Finishing", transactionId=1234, energy=3.6)
+    await coordinator.async_refresh()
+    assert _state(hass, "sensor", "today_energy").state == "9.333"
+
+    # A new day starts from zero.
+    freezer.move_to("2026-07-19 08:00:00+02:00")
+    set_connector(mock_api)
+    await coordinator.async_refresh()
+    energy = _state(hass, "sensor", "today_energy")
+    assert energy.state == "0.0"
+    assert energy.attributes["last_reset"] == "2026-07-19T00:00:00+02:00"
+
+
 async def test_lcd_only_with_a_display(hass: HomeAssistant, mock_api) -> None:
     """Models without a display get no LCD switch; an older one is removed."""
     registry = er.async_get(hass)

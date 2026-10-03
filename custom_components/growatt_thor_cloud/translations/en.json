@@ -181,6 +181,9 @@
       "last_session_cost": {
         "name": "Last charge - Cost"
       },
+      "today_energy": {
+        "name": "Energy charged today"
+      },
       "next_reservation": {
         "name": "Fast - Next scheduled start"
       },

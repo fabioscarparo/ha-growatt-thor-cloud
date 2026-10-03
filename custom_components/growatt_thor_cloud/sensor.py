@@ -29,7 +29,7 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .clock import charger_offset, dst_period, time_zone
-from .const import ACTIVE_STATES, CONNECTOR_STATUS
+from .const import ACTIVE_STATES, CONNECTOR_STATUS, SESSION_STATES
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
 from .schedule import LIMIT_TYPES, boost_params, is_boost_on, next_reservation
@@ -138,13 +138,13 @@ def _working_mode(charger: ThorCharger) -> str | None:
     return WORKING_MODES.get(raw)
 
 
-def _session_time(charger: ThorCharger, key: str) -> datetime | None:
-    """A time of the last session, "YYYY-MM-DD HH:MM:SS" on the charger's clock.
+def _record_time(charger: ThorCharger, session: dict[str, Any], key: str) -> datetime | None:
+    """A time of a history session, "YYYY-MM-DD HH:MM:SS" on the charger's clock.
 
     The epoch fields next to it (sysStartTime / sysEndTime) read that wall-clock
     time as UTC+8, so they are not used.
     """
-    parsed = dt_util.parse_datetime(str(charger.last_session.get(key) or ""))
+    parsed = dt_util.parse_datetime(str(session.get(key) or ""))
     if parsed is None:
         return None
     if parsed.tzinfo is None:
@@ -153,6 +153,36 @@ def _session_time(charger: ThorCharger, key: str) -> datetime | None:
             tzinfo=dt_util.get_default_time_zone() if offset is None else timezone(offset)
         )
     return dt_util.as_utc(parsed)
+
+
+def _session_time(charger: ThorCharger, key: str) -> datetime | None:
+    """A time of the last session."""
+    return _record_time(charger, charger.last_session, key)
+
+
+def _today_energy(charger: ThorCharger) -> float:
+    """Energy of today's sessions, kWh: those that ended today and the one open now.
+
+    A session counts on the day it ends. Once it is in the history, the live value of
+    the same transaction is not added again.
+    """
+    today = dt_util.now().date()
+    total = 0.0
+    recorded: set[str] = set()
+    for session in charger.sessions:
+        recorded.add(str(session.get("transactionId") or ""))
+        end = _record_time(charger, session, "endtime")
+        if end is not None and dt_util.as_local(end).date() == today:
+            total += to_float(session.get("energy")) or 0.0
+    connector = charger.connector
+    transaction = str(connector.get("transactionId") or "")
+    if (
+        connector.get("status") in SESSION_STATES
+        and transaction not in ("", "0")
+        and transaction not in recorded
+    ):
+        total += to_float(connector.get("energy")) or 0.0
+    return round(total, 3)
 
 
 def _time_zone_attrs(charger: ThorCharger) -> dict[str, Any]:
@@ -194,6 +224,8 @@ class ThorSensorDescription(SensorEntityDescription):
     attrs_fn: Callable[[ThorCharger], dict[str, Any]] | None = None
     # When set, the unit is the charger currency (e.g. "EUR") plus this suffix.
     currency_unit: str | None = None
+    # For a total that starts again periodically: when the current period began.
+    last_reset_fn: Callable[[], datetime] | None = None
 
 
 SENSORS: tuple[ThorSensorDescription, ...] = (
@@ -299,6 +331,17 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         currency_unit="",
         value_fn=lambda c: to_float(c.last_session.get("cost")),
     ),
+    # Starts again at midnight; it can dip slightly when a session moves from the
+    # live data to the history, so it is a total and not an increasing one.
+    ThorSensorDescription(
+        key="today_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=_today_energy,
+        last_reset_fn=dt_util.start_of_local_day,
+    ),
     ThorSensorDescription(
         key="next_reservation",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -402,6 +445,11 @@ class ThorSensor(ThorEntity, SensorEntity):
     @property
     def native_value(self) -> StateType | datetime:
         return self.entity_description.value_fn(self.charger)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        last_reset_fn = self.entity_description.last_reset_fn
+        return None if last_reset_fn is None else last_reset_fn()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

@@ -44,6 +44,10 @@ export interface WallboxCardConfig {
   solar_power?: string;
   home_power?: string;
   grid_import_power?: string;
+  grid_export_power?: string;
+  battery_power?: string;
+  battery_charging_positive?: boolean;
+  battery_soc?: string;
   home_includes_wallbox?: boolean;
   show_session?: boolean;
   show_progress?: boolean;

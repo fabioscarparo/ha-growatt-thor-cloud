@@ -1,6 +1,14 @@
-import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, nothing, svg, type PropertyValues, type TemplateResult } from "lit";
 import {
   mdiAlertCircleOutline,
+  mdiArrowDown,
+  mdiArrowLeft,
+  mdiArrowRight,
+  mdiArrowUp,
+  mdiBatteryHigh,
+  mdiBatteryLow,
+  mdiBatteryMedium,
+  mdiBatteryOutline,
   mdiCalendarClock,
   mdiCalendarRemove,
   mdiCloudOffOutline,
@@ -24,6 +32,7 @@ import {
 } from "@mdi/js";
 import "./editor";
 import { ACTIVE_STATES, SESSION_STATES, findDevices, resolveEntities } from "./entities";
+import { computeFlow, type Flow } from "./flow";
 import {
   formatClock,
   formatKw,
@@ -79,6 +88,15 @@ function flowDuration(watts: number): number {
   return Math.round(seconds * 4) / 4;
 }
 
+// Largest radius of the bend from the solar circle down to the battery.
+const BEND_RADIUS = 24;
+
+/** The home battery's links, as SVG paths in px from the top left of the flow. */
+interface BatteryLinks {
+  wallbox: string;
+  solar?: string;
+}
+
 interface Badge {
   icon: string;
   text: string;
@@ -116,10 +134,16 @@ class ThorWallboxCard extends LitElement {
   static properties = {
     hass: { attribute: false },
     _config: { state: true },
+    _links: { state: true },
   };
 
   declare hass?: HomeAssistant;
   declare _config?: WallboxCardConfig;
+  declare _links?: BatteryLinks;
+
+  // Draws the battery's links again when the flow changes size.
+  private _resizeObserver?: ResizeObserver;
+  private _observedFlow?: Element;
 
   // The device's entities, rebuilt when the registry or the device changes.
   private _ids = new Map<string, string>();
@@ -149,6 +173,26 @@ class ThorWallboxCard extends LitElement {
     return { columns: 12, min_columns: 6 };
   }
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._resizeObserver?.disconnect();
+    this._observedFlow = undefined;
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    const flow = this.renderRoot.querySelector(".flow") ?? undefined;
+    if (flow !== this._observedFlow) {
+      this._resizeObserver ??= new ResizeObserver(() => this._measureLinks());
+      this._resizeObserver.disconnect();
+      if (flow) {
+        this._resizeObserver.observe(flow);
+      }
+      this._observedFlow = flow;
+    }
+    this._measureLinks();
+  }
+
   protected shouldUpdate(changed: PropertyValues): boolean {
     if (changed.has("_config") || !this.hass) {
       return true;
@@ -171,7 +215,14 @@ class ThorWallboxCard extends LitElement {
   private _watched(): string[] {
     const config = this._config;
     const ids = [...this._entityIds().values()];
-    for (const id of [config?.solar_power, config?.home_power, config?.grid_import_power]) {
+    for (const id of [
+      config?.solar_power,
+      config?.home_power,
+      config?.grid_import_power,
+      config?.grid_export_power,
+      config?.battery_power,
+      config?.battery_soc,
+    ]) {
       if (id) {
         ids.push(id);
       }
@@ -386,69 +437,202 @@ class ThorWallboxCard extends LitElement {
   }
 
   /**
-   * Solar and grid next to the wallbox, as in the energy dashboard.
-   *
-   * The solar share is the surplus left by the rest of the home (all of the
-   * production without a home sensor); the grid covers what the solar does not.
+   * Solar, grid and home battery around the wallbox, as in the energy dashboard,
+   * with where the wallbox's power comes from (see computeFlow).
    */
   private _renderFlow(status: string, mode: string | undefined, wallbox: number) {
     const config = this._config!;
-    if (!config.solar_power && !config.grid_import_power) {
+    const hasSolar = Boolean(config.solar_power);
+    const hasGrid = Boolean(config.grid_import_power || config.grid_export_power);
+    const hasBattery = Boolean(config.battery_power);
+    if (!hasSolar && !hasGrid && !hasBattery) {
       return nothing;
     }
     const hass = this.hass!;
     const solar = powerInWatts(this._configured(config.solar_power));
-    const grid = powerInWatts(this._configured(config.grid_import_power));
-    const home = powerInWatts(this._configured(config.home_power));
+    const gridImport = powerInWatts(this._configured(config.grid_import_power));
+    const gridExport = powerInWatts(this._configured(config.grid_export_power));
+    const batteryPower = powerInWatts(this._configured(config.battery_power));
     const charging = status === "charging" && wallbox > MIN_FLOW;
-    const rest =
-      home === undefined
-        ? undefined
-        : Math.max(0, home - (config.home_includes_wallbox === false ? 0 : wallbox));
-    const surplus = solar === undefined || rest === undefined ? undefined : solar - rest;
-    const fromSolar = charging && solar !== undefined ? Math.max(0, Math.min(wallbox, surplus ?? solar)) : 0;
-    const uncovered = Math.max(0, wallbox - fromSolar);
-    const fromGrid = charging ? (grid === undefined ? uncovered : Math.min(grid, uncovered)) : 0;
+    const flow = computeFlow({
+      wallbox,
+      charging,
+      solar,
+      gridImport,
+      gridExport,
+      home: powerInWatts(this._configured(config.home_power)),
+      homeIncludesWallbox: config.home_includes_wallbox !== false,
+      battery:
+        batteryPower === undefined ? undefined : config.battery_charging_positive ? -batteryPower : batteryPower,
+    });
+    const soc = numericState(this._configured(config.battery_soc));
 
-    let note = "";
-    if (charging && config.solar_power) {
-      note = this._t("from_sources", {
-        solar: formatKw(hass, fromSolar),
-        grid: formatKw(hass, fromGrid),
-      });
-    } else if (!charging && mode === "pv_linkage" && surplus !== undefined) {
-      note = this._t("surplus", { value: formatKw(hass, Math.max(0, surplus)) });
+    const notes: string[] = [];
+    if (charging) {
+      const parts = [
+        flow.fromSolar > MIN_FLOW ? this._t("from_solar", { value: formatKw(hass, flow.fromSolar) }) : "",
+        flow.fromBattery > MIN_FLOW ? this._t("from_battery", { value: formatKw(hass, flow.fromBattery) }) : "",
+        flow.fromGrid > MIN_FLOW ? this._t("from_grid", { value: formatKw(hass, flow.fromGrid) }) : "",
+      ].filter(Boolean);
+      if (parts.length) {
+        const sentence = parts.join(", ");
+        notes.push(`${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`);
+      }
+    } else if (mode === "pv_linkage") {
+      if (flow.surplus !== undefined) {
+        notes.push(this._t("surplus", { value: formatKw(hass, flow.surplus) }));
+      }
+      if (flow.batteryFromSolar > MIN_FLOW) {
+        notes.push(
+          soc === undefined
+            ? this._t("battery_charging", { value: formatKw(hass, flow.batteryCharging) })
+            : this._t("battery_charging_soc", {
+                value: formatKw(hass, flow.batteryCharging),
+                soc: `${formatNumber(hass, soc, 0)} %`,
+              }),
+        );
+      }
     }
     const value = (watts?: number) => (watts === undefined ? "-" : formatKw(hass, watts));
+    // Empty places on the sides keep the wallbox in the middle, above the battery.
+    const spacer = html`<div class="node spacer"></div><div class="line spacer"></div>`;
 
     return html`
       <div class="flow">
         <div class="row">
-          ${config.solar_power
+          ${hasSolar
             ? html`
                 <div class="node solar">
                   <span class="label">${this._t("solar")}</span>
                   <div class="circle">${icon(mdiSolarPower)}<span>${value(solar)}</span></div>
                 </div>
-                ${this._renderLine("solar", fromSolar, false)}
+                ${this._renderLine("solar", flow.fromSolar, false)}
               `
-            : nothing}
+            : spacer}
           <div class="node wallbox">
             <span class="label">${this._t("wallbox")}</span>
             <div class="circle">${icon(mdiEvStation)}<span>${formatKw(hass, wallbox)}</span></div>
           </div>
-          ${config.grid_import_power
+          ${hasGrid
             ? html`
-                ${this._renderLine("grid", fromGrid, true)}
+                ${this._renderLine("grid", flow.fromGrid, true)}
                 <div class="node grid">
                   <span class="label">${this._t("grid")}</span>
-                  <div class="circle">${icon(mdiTransmissionTower)}<span>${value(grid)}</span></div>
+                  <div class="circle">
+                    ${icon(mdiTransmissionTower)}
+                    ${config.grid_export_power
+                      ? html`<span class="import">${icon(mdiArrowLeft, 12)}${value(gridImport)}</span>
+                          <span class="export">${icon(mdiArrowRight, 12)}${value(gridExport)}</span>`
+                      : html`<span>${value(gridImport)}</span>`}
+                  </div>
                 </div>
               `
-            : nothing}
+            : html`<div class="line spacer"></div><div class="node spacer"></div>`}
         </div>
-        ${note ? html`<p class="note">${note}</p>` : nothing}
+        ${hasBattery ? this._renderBattery(flow, soc) : nothing}
+        ${notes.length ? html`<p class="note">${notes.join(" ")}</p>` : nothing}
+        ${hasBattery && this._links ? this._renderLinks(this._links, flow) : nothing}
       </div>
+    `;
+  }
+
+  /** The home battery below the wallbox; _renderLinks draws its links. */
+  private _renderBattery(flow: Flow, soc: number | undefined): TemplateResult {
+    const hass = this.hass!;
+    let batteryIcon = mdiBatteryHigh;
+    if (soc !== undefined) {
+      if (soc < 10) {
+        batteryIcon = mdiBatteryOutline;
+      } else if (soc <= 32.5) {
+        batteryIcon = mdiBatteryLow;
+      } else if (soc <= 72.5) {
+        batteryIcon = mdiBatteryMedium;
+      }
+    }
+    let power = html`<span>${formatKw(hass, 0)}</span>`;
+    if (flow.batteryDischarging > MIN_FLOW) {
+      power = html`<span class="discharging">${icon(mdiArrowUp, 12)}${formatKw(hass, flow.batteryDischarging)}</span>`;
+    } else if (flow.batteryCharging > MIN_FLOW) {
+      power = html`<span class="charging">${icon(mdiArrowDown, 12)}${formatKw(hass, flow.batteryCharging)}</span>`;
+    }
+    return html`
+      <div class="node battery">
+        <div class="circle">
+          ${icon(batteryIcon)}
+          ${soc === undefined ? nothing : html`<span>${formatNumber(hass, soc, 0)} %</span>`}
+          ${power}
+        </div>
+        <span class="label">${this._t("battery")}</span>
+      </div>
+    `;
+  }
+
+  /**
+   * Where the battery's links run, from where the circles are laid out: up to the
+   * wallbox, and from the bottom of the solar circle, bending into the battery's side.
+   */
+  private _measureLinks(): void {
+    const flow = this.renderRoot.querySelector(".flow");
+    const circle = (node: string) => flow?.querySelector<HTMLElement>(`.node.${node} .circle`) ?? undefined;
+    const battery = circle("battery");
+    const wallbox = circle("wallbox");
+    let links: BatteryLinks | undefined;
+    if (battery && wallbox && battery.offsetWidth) {
+      // Half pixels keep the 1px lines sharp.
+      const centre = (el: HTMLElement) => Math.round(el.offsetLeft + el.offsetWidth / 2) + 0.5;
+      const bottom = (el: HTMLElement) => el.offsetTop + el.offsetHeight;
+      const y = Math.round(battery.offsetTop + battery.offsetHeight / 2) + 0.5;
+      const solar = circle("solar");
+      let bend: string | undefined;
+      if (solar) {
+        const x = centre(solar);
+        const top = bottom(solar);
+        const radius = Math.max(0, Math.min(BEND_RADIUS, y - top, battery.offsetLeft - x));
+        bend = `M${x} ${top}V${y - radius}A${radius} ${radius} 0 0 0 ${x + radius} ${y}H${battery.offsetLeft}`;
+      }
+      links = { wallbox: `M${centre(battery)} ${battery.offsetTop}V${bottom(wallbox)}`, solar: bend };
+    }
+    if (JSON.stringify(links) !== JSON.stringify(this._links)) {
+      this._links = links;
+    }
+  }
+
+  /**
+   * The battery's links, with a running dot where power flows: up to the wallbox
+   * while it feeds the car, from solar while it charges from it.
+   */
+  private _renderLinks(links: BatteryLinks, flow: Flow): TemplateResult {
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const link = (path: string | undefined, kind: string, watts: number) => {
+      if (!path) {
+        return nothing;
+      }
+      const active = watts > MIN_FLOW;
+      // Without motion, the dot stays halfway.
+      const points = still ? "0.5;0.5" : "0;1";
+      return svg`
+        <g class="link ${kind} ${active ? "active" : ""}">
+          <path d=${path}></path>
+          ${active
+            ? svg`<circle r="2.5">
+                <animateMotion
+                  path=${path}
+                  dur="${flowDuration(watts)}s"
+                  repeatCount="indefinite"
+                  calcMode="linear"
+                  keyPoints=${points}
+                  keyTimes="0;1"
+                ></animateMotion>
+              </circle>`
+            : nothing}
+        </g>
+      `;
+    };
+    return html`
+      <svg class="links" aria-hidden="true">
+        ${link(links.wallbox, "battery-out", flow.fromBattery)}
+        ${link(links.solar, "battery-in", flow.batteryFromSolar)}
+      </svg>
     `;
   }
 

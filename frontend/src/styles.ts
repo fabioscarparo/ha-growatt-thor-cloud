@@ -146,6 +146,7 @@ export const cardStyles = css`
   }
 
   .flow {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -245,6 +246,72 @@ export const cardStyles = css`
       left: calc(100% - 5px);
     }
   }
+  .node.spacer,
+  .line.spacer {
+    visibility: hidden;
+  }
+  .circle .import,
+  .circle .export,
+  .circle .charging,
+  .circle .discharging {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .circle .import svg {
+    color: var(--energy-grid-consumption-color, #488fc2);
+  }
+  .circle .export svg {
+    color: var(--energy-grid-return-color, #8353d1);
+  }
+  .circle .charging svg {
+    color: var(--energy-battery-in-color, #f06292);
+  }
+  .circle .discharging svg {
+    color: var(--energy-battery-out-color, #4db6ac);
+  }
+
+  /* The home battery below the wallbox, its label underneath. */
+  .node.battery {
+    --node-color: var(--energy-battery-out-color, #4db6ac);
+    align-self: center;
+    margin-top: 20px;
+  }
+  .node.battery .label {
+    margin-top: 4px;
+  }
+  /* The battery's links, drawn over the flow once the circles are laid out. */
+  .links {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .link {
+    color: var(--disabled-color, #bdbdbd);
+    opacity: 0.5;
+  }
+  .link path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+  }
+  .link circle {
+    fill: currentColor;
+  }
+  .link.active {
+    opacity: 1;
+  }
+  .link.battery-out.active {
+    color: var(--energy-battery-out-color, #4db6ac);
+  }
+  .link.battery-in.active {
+    color: var(--energy-battery-in-color, #f06292);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .line .dot {
       animation: none;

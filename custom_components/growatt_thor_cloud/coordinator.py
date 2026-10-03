@@ -32,8 +32,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 TIME_ZONE_HELP_URL = "https://github.com/fabioscarparo/ha-growatt-thor-cloud#time-zone"
-# Sessions read from the history: two, in case the newest one has not ended yet.
-SESSIONS_READ = 2
+# Sessions read from the history: enough for a day of charging, plus the newest one
+# in case it has not ended yet.
+SESSIONS_READ = 20
 # A write is confirmed by the charger about a minute later: read the settings again then.
 CONFIRM_DELAY = timedelta(seconds=90)
 
@@ -57,6 +58,8 @@ class ThorCharger:
     charge_mode: dict[str, Any] = field(default_factory=dict)  # /ocpp/chargeMode
     # Newest ended session of /ocpp/api/chargeRecord; the live data resets after a session.
     last_session: dict[str, Any] = field(default_factory=dict)
+    # Ended sessions of /ocpp/api/chargeRecord, newest first.
+    sessions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def price_conf(self) -> list[dict[str, Any]]:
@@ -279,6 +282,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                     # Secondary data: keep the last list instead of failing the update.
                     _LOGGER.debug("Reservation list not available for %s: %s", sn, err)
             last_session = previous.last_session if previous else {}
+            sessions = previous.sessions if previous else []
             # The history only changes when a session ends: read it with the settings,
             # and right after a transaction stops.
             ended = (
@@ -288,15 +292,13 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
             )
             if refresh_config or previous is None or ended:
                 try:
-                    sessions = await self.api.async_get_sessions(sn, SESSIONS_READ)
+                    history = await self.api.async_get_sessions(sn, SESSIONS_READ)
                 except GrowattThorApiError as err:
                     # Secondary data, like the reservations.
                     _LOGGER.debug("Charge history not available for %s: %s", sn, err)
                 else:
-                    last_session = next(
-                        (s for s in sessions if s.get("sysEndTime") or s.get("endtime")),
-                        last_session,
-                    )
+                    sessions = [s for s in history if s.get("sysEndTime") or s.get("endtime")]
+                    last_session = sessions[0] if sessions else last_session
             chargers[sn] = ThorCharger(
                 sn=sn,
                 summary=summary,
@@ -305,6 +307,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 reservations=reservations,
                 charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
                 last_session=last_session,
+                sessions=sessions,
             )
         if refresh_config:
             self._config_fetched_at = now
