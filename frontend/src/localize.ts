@@ -72,7 +72,7 @@ const en = {
   helper_solar_power: "Power sensors of the inverter, to show where the wallbox power comes from.",
   helper_home_power: "Optional: with it the card works out the solar surplus.",
   helper_grid_export_power:
-    "Recommended: the surplus is then what the wallbox sees, the power that would go to the grid.",
+    "Recommended for PV Linkage: the surplus becomes the power exported to the grid, the same value the wallbox reads from the meter.",
   helper_battery_power: "Optional: shows the home battery, which takes the surplus first while it charges.",
   helper_battery_charging_positive: "On when the sensor is positive while charging and negative while discharging.",
   helper_home_includes_wallbox: "On when the wallbox is downstream of the home consumption sensor.",
@@ -158,7 +158,7 @@ const it: Strings = {
   helper_solar_power: "Sensori di potenza dell'inverter, per mostrare da dove arriva l'energia della wallbox.",
   helper_home_power: "Facoltativo: serve a calcolare il surplus fotovoltaico.",
   helper_grid_export_power:
-    "Consigliato: così il surplus è quello che vede la wallbox, la potenza che finirebbe in rete.",
+    "Consigliato in PV Linkage: il surplus diventa la potenza immessa in rete, lo stesso valore che la wallbox legge dal contatore.",
   helper_battery_power: "Facoltativo: mostra la batteria di casa, che quando si carica prende il surplus per prima.",
   helper_battery_charging_positive: "Attivo se il sensore è positivo mentre si carica e negativo mentre si scarica.",
   helper_home_includes_wallbox: "Attivo se la wallbox è a valle del sensore dei consumi della casa.",

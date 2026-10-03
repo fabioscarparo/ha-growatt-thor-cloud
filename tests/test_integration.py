@@ -6,11 +6,14 @@ import pytest
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    mock_restore_cache_with_extra_data,
+)
 
 from custom_components.growatt_thor_cloud.api import GrowattThorAuthError, hash_password
 from custom_components.growatt_thor_cloud.const import CONF_PASSWORD_HASH, DOMAIN
@@ -414,6 +417,59 @@ async def test_today_energy(hass: HomeAssistant, mock_api, freezer) -> None:
     energy = _state(hass, "sensor", "today_energy")
     assert energy.state == "0.0"
     assert energy.attributes["last_reset"] == "2026-07-19T00:00:00+02:00"
+
+
+async def test_today_energy_across_midnight(hass: HomeAssistant, mock_api, freezer) -> None:
+    """A session open at midnight counts on each day for what it charged that day."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-07-18 23:50:00+02:00")
+    history = [{**SESSION, "transactionId": 10, "endtime": "2026-07-18 08:10:00", "energy": 5.0}]
+    mock_api.async_get_sessions.side_effect = lambda sn, count: [dict(s) for s in history]
+    set_charging(mock_api, energy=7.0)
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    assert _state(hass, "sensor", "today_energy").state == "12.0"
+
+    # After midnight, only what was charged since counts.
+    freezer.move_to("2026-07-19 00:01:00+02:00")
+    set_charging(mock_api, energy=7.2)
+    await coordinator.async_refresh()
+    energy = _state(hass, "sensor", "today_energy")
+    assert energy.state == "0.2"
+    assert energy.attributes["last_reset"] == "2026-07-19T00:00:00+02:00"
+
+    # Once in the history, the session adds what it charged after midnight.
+    freezer.move_to("2026-07-19 07:00:00+02:00")
+    history.insert(
+        0, {**SESSION, "transactionId": 1234, "endtime": "2026-07-19 06:59:00", "energy": 40.0}
+    )
+    set_connector(mock_api, status="Finishing", transactionId=1234, energy=40.0)
+    await coordinator.async_refresh()
+    assert _state(hass, "sensor", "today_energy").state == "33.0"
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        # Restarted after midnight: the part counted the day before was saved.
+        {"day": "2026-07-19", "carried": {"1234": 7.0}, "open_session": ["1234", 7.2]},
+        # Stopped before midnight: what the session had charged belongs to that day.
+        {"day": "2026-07-18", "carried": {}, "open_session": ["1234", 7.0]},
+    ],
+)
+async def test_today_energy_after_restart(
+    hass: HomeAssistant, mock_api, freezer, saved: dict
+) -> None:
+    """The part of an open session counted the day before is not counted again."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-07-19 03:00:00+02:00")
+    mock_restore_cache_with_extra_data(
+        hass, [(State(f"sensor.{SN.lower()}_energy_charged_today", "0.2"), saved)]
+    )
+    mock_api.async_get_sessions.side_effect = lambda sn, count: []
+    set_charging(mock_api, energy=20.0)
+    await setup_integration(hass)
+    assert _state(hass, "sensor", "today_energy").state == "13.0"
 
 
 async def test_lcd_only_with_a_display(hass: HomeAssistant, mock_api) -> None:

@@ -71,7 +71,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 |---|---|---|
 | Cable lock | binary sensor | on = unlocked |
 | Current, Voltage | sensor | |
-| Energy charged today | sensor, kWh | sessions that ended today plus the one in progress; a session counts on the day it ends; starts again at midnight |
+| Energy charged today | sensor, kWh | energy charged since midnight: the sessions that ended today plus the one in progress; for a session open at midnight, only the part charged after it |
 | Fast - Next scheduled start | timestamp | `every_day`, `limit`, `limit_value` attributes |
 | Last charge | timestamp | end of the last session |
 | Last charge - Cost, Duration, Energy, Start | sensor | the last session, still shown once the session sensors reset |

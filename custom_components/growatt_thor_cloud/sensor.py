@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -23,8 +23,9 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
@@ -160,31 +161,6 @@ def _session_time(charger: ThorCharger, key: str) -> datetime | None:
     return _record_time(charger, charger.last_session, key)
 
 
-def _today_energy(charger: ThorCharger) -> float:
-    """Energy of today's sessions, kWh: those that ended today and the one open now.
-
-    A session counts on the day it ends. Once it is in the history, the live value of
-    the same transaction is not added again.
-    """
-    today = dt_util.now().date()
-    total = 0.0
-    recorded: set[str] = set()
-    for session in charger.sessions:
-        recorded.add(str(session.get("transactionId") or ""))
-        end = _record_time(charger, session, "endtime")
-        if end is not None and dt_util.as_local(end).date() == today:
-            total += to_float(session.get("energy")) or 0.0
-    connector = charger.connector
-    transaction = str(connector.get("transactionId") or "")
-    if (
-        connector.get("status") in SESSION_STATES
-        and transaction not in ("", "0")
-        and transaction not in recorded
-    ):
-        total += to_float(connector.get("energy")) or 0.0
-    return round(total, 3)
-
-
 def _time_zone_attrs(charger: ThorCharger) -> dict[str, Any]:
     """Daylight saving start and end as "MM-DD", None when not set."""
     period = dst_period(charger.config)
@@ -224,8 +200,6 @@ class ThorSensorDescription(SensorEntityDescription):
     attrs_fn: Callable[[ThorCharger], dict[str, Any]] | None = None
     # When set, the unit is the charger currency (e.g. "EUR") plus this suffix.
     currency_unit: str | None = None
-    # For a total that starts again periodically: when the current period began.
-    last_reset_fn: Callable[[], datetime] | None = None
 
 
 SENSORS: tuple[ThorSensorDescription, ...] = (
@@ -331,17 +305,6 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         currency_unit="",
         value_fn=lambda c: to_float(c.last_session.get("cost")),
     ),
-    # Starts again at midnight; it can dip slightly when a session moves from the
-    # live data to the history, so it is a total and not an increasing one.
-    ThorSensorDescription(
-        key="today_energy",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        suggested_display_precision=2,
-        value_fn=_today_energy,
-        last_reset_fn=dt_util.start_of_local_day,
-    ),
     ThorSensorDescription(
         key="next_reservation",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -427,9 +390,14 @@ async def async_setup_entry(
     """One set of sensors per charger found at setup."""
     coordinator = entry.runtime_data
     async_add_entities(
-        ThorSensor(coordinator, sn, description)
-        for sn in coordinator.data
-        for description in SENSORS
+        [
+            *(
+                ThorSensor(coordinator, sn, description)
+                for sn in coordinator.data
+                for description in SENSORS
+            ),
+            *(ThorTodayEnergySensor(coordinator, sn) for sn in coordinator.data),
+        ]
     )
 
 
@@ -447,11 +415,6 @@ class ThorSensor(ThorEntity, SensorEntity):
         return self.entity_description.value_fn(self.charger)
 
     @property
-    def last_reset(self) -> datetime | None:
-        last_reset_fn = self.entity_description.last_reset_fn
-        return None if last_reset_fn is None else last_reset_fn()
-
-    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         if self.entity_description.attrs_fn is None:
             return None
@@ -465,3 +428,120 @@ class ThorSensor(ThorEntity, SensorEntity):
             return super().native_unit_of_measurement
         currency = self.charger.config.get("unit") or self.charger.summary.get("unit")
         return f"{currency}{suffix}" if currency else None
+
+
+# Starts again at midnight; it can dip slightly when a session moves from the live data
+# to the history, so it is a total and not an increasing one.
+TODAY_ENERGY = SensorEntityDescription(
+    key="today_energy",
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    suggested_display_precision=2,
+)
+
+
+@dataclass
+class TodayEnergyData(ExtraStoredData):
+    """What Energy charged today needs besides the history, kept across restarts.
+
+    day: the local date being counted. carried: kWh of sessions that were open at
+    midnight, by transaction, already counted on the day before. open_session: the
+    session open at the last update, with its kWh so far.
+    """
+
+    day: date | None = None
+    carried: dict[str, float] = field(default_factory=dict)
+    open_session: tuple[str, float] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "day": self.day.isoformat() if self.day else None,
+            "carried": self.carried,
+            "open_session": list(self.open_session) if self.open_session else None,
+        }
+
+    @classmethod
+    def restore(cls, extra: ExtraStoredData | None) -> TodayEnergyData:
+        """The saved data; a new count if there is none or it cannot be read."""
+        if extra is None:
+            return cls()
+        saved = extra.as_dict()
+        try:
+            day = date.fromisoformat(saved["day"]) if saved.get("day") else None
+            carried = {str(k): float(v) for k, v in (saved.get("carried") or {}).items()}
+            open_session = saved.get("open_session")
+            return cls(
+                day,
+                carried,
+                (str(open_session[0]), float(open_session[1])) if open_session else None,
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+            return cls()
+
+
+class ThorTodayEnergySensor(ThorEntity, SensorEntity, RestoreEntity):
+    """Energy charged since local midnight, kWh.
+
+    It adds the sessions that ended today and the one open now. A session that was
+    open at midnight was partly counted on the day before: that part is left out.
+    Once a session is in the history, its live value is not added again.
+    """
+
+    entity_description = TODAY_ENERGY
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, TODAY_ENERGY.key)
+        self._data = TodayEnergyData()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._data = TodayEnergyData.restore(await self.async_get_last_extra_data())
+        self._count()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._count()
+        super()._handle_coordinator_update()
+
+    @property
+    def extra_restore_state_data(self) -> TodayEnergyData:
+        return self._data
+
+    @property
+    def last_reset(self) -> datetime | None:
+        return dt_util.start_of_local_day(self._data.day) if self._data.day else None
+
+    def _count(self) -> None:
+        if self._sn not in self.coordinator.data:
+            return
+        charger = self.charger
+        data = self._data
+        today = dt_util.now().date()
+        if data.day != today:
+            # What the session open at the last update had charged was counted before.
+            data.carried = dict([data.open_session]) if data.day and data.open_session else {}
+            data.day = today
+
+        def since_midnight(transaction: str, energy: object) -> float:
+            return max(0.0, (to_float(energy) or 0.0) - data.carried.get(transaction, 0.0))
+
+        total = 0.0
+        recorded: set[str] = set()
+        for session in charger.sessions:
+            transaction = str(session.get("transactionId") or "")
+            recorded.add(transaction)
+            end = _record_time(charger, session, "endtime")
+            if end is not None and dt_util.as_local(end).date() == today:
+                total += since_midnight(transaction, session.get("energy"))
+        connector = charger.connector
+        transaction = str(connector.get("transactionId") or "")
+        data.open_session = None
+        if (
+            connector.get("status") in SESSION_STATES
+            and transaction not in ("", "0")
+            and transaction not in recorded
+        ):
+            total += since_midnight(transaction, connector.get("energy"))
+            data.open_session = (transaction, to_float(connector.get("energy")) or 0.0)
+        self._attr_native_value = round(total, 3)

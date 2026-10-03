@@ -173,6 +173,15 @@ class ThorWallboxCard extends LitElement {
     return { columns: 12, min_columns: 6 };
   }
 
+  connectedCallback(): void {
+    super.connectedCallback();
+    // Back on the page, maybe at another size: updated() watches the flow again and
+    // redraws the battery's links.
+    if (this.hasUpdated) {
+      this.requestUpdate();
+    }
+  }
+
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._resizeObserver?.disconnect();

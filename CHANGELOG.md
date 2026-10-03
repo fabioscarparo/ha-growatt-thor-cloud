@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1
+### Fixed
+- *Energy charged today*: a session open at midnight was counted twice, on the day before
+  with the energy charged until midnight and again in full on the day it ended. The sensor
+  now counts the energy charged since local midnight; the part of an open session already
+  counted on the day before is kept across restarts. Statistics recorded before this version
+  are not corrected.
+- *Wallbox card*: the links to the home battery are redrawn when Home Assistant puts the card
+  back on the page; they could stay where the circles were at a different card width.
+- *Wallbox card*: clearer help text for *Grid export* in the card editor.
+
 ## 0.8.0
 ### New
 - *Energy charged today* (sensor, kWh, `state_class: total`): energy of the sessions that
