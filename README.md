@@ -205,7 +205,7 @@ dashboard settings.
   `energy`; missing values are taken from the Boost settings. The Boost entities follow what
   was sent. Outside a session only.
 
-## Wallbox card (beta)
+## Wallbox card
 The integration comes with a dashboard card for the charger, drawn with Home Assistant's own
 elements and theme colors: status, charging power, the session, alerts, start and stop, unlock
 and the charge mode. It is loaded automatically, with no resource to add, and it updates with
@@ -247,7 +247,7 @@ battery and grid, after the rest of the home has taken its share.
 The controls follow the integration's rules: no remote start or stop in RFID mode, no charge
 mode change while a session is open, and unlock only when the charger allows it.
 
-This is a first version: please report problems and ideas in the
+Please report problems and ideas in the
 [issues](https://github.com/fabioscarparo/ha-growatt-thor-cloud/issues).
 
 ## Energy dashboard

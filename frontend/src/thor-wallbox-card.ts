@@ -995,7 +995,7 @@ if (!customCards.some((card) => card.type === "thor-wallbox-card")) {
     name: localize(undefined, "card_name"),
     description: localize(undefined, "card_description"),
     preview: true,
-    documentationURL: "https://github.com/fabioscarparo/ha-growatt-thor-cloud#wallbox-card-beta",
+    documentationURL: "https://github.com/fabioscarparo/ha-growatt-thor-cloud#wallbox-card",
   });
 }
 
