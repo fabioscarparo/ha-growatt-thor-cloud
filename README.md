@@ -210,7 +210,7 @@ the integration.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/card/wall-dark.svg">
-  <img src="assets/card/wall-light.svg" alt="The THOR Wallbox card while charging in Fast, PV Linkage and Off-peak, available, with a scheduled start and with a fault">
+  <img src="assets/card/wall-light.svg" alt="The THOR Wallbox card while charging in Fast, PV Linkage and Off-peak, with the home battery, available, with a scheduled start and with a fault">
 </picture>
 
 Add it from *Edit dashboard > Add card > THOR Wallbox* and pick the charger: the card
