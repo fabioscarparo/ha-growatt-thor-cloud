@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/fabioscarparo/ha-growatt-thor-cloud/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/fabioscarparo/ha-growatt-thor-cloud?label=Release&color=5CC300"></a>
+  <a href="https://github.com/fabioscarparo/ha-growatt-thor-cloud/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/fabioscarparo/ha-growatt-thor-cloud/ci.yml?branch=main&label=CI"></a>
   <a href="https://hacs.xyz/"><img alt="HACS Custom" src="https://img.shields.io/badge/HACS-Custom-41BDF5?logo=homeassistantcommunitystore&logoColor=fff"></a>
   <a href="https://www.home-assistant.io/"><img alt="Home Assistant 2025.3+" src="https://img.shields.io/badge/Home_Assistant-2025.3%2B-18BCF2?logo=homeassistant&logoColor=fff"></a>
   <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff"></a>
@@ -343,9 +344,12 @@ is, since the hour of the switch is not known.
   cd frontend && npm install && npm run build
   ```
 - Tests (config flow, entities, actions, change rules, clock warning, Wallbox card, polling
-  behaviour and API client, against a mocked cloud):
+  behaviour and API client, against a mocked cloud) and lint rules (`ruff.toml`). GitHub
+  runs them on every push, together with the card's checks and the Home Assistant and HACS
+  validations (`.github/workflows/ci.yml`):
   ```bash
-  pip install -r requirements_test.txt
+  pip install -r requirements_test.txt ruff
+  ruff check .
   pytest
   ```
 

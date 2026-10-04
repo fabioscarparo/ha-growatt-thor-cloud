@@ -1,0 +1,87 @@
+# Continuous integration: checks every push to main and every pull request.
+#
+# Four independent jobs, run in parallel:
+#   tests     the integration's Python tests (pytest, against a mocked Growatt cloud, see
+#             tests/) and the lint rules of ruff.toml;
+#   card      the Wallbox card (frontend/): type check, unit tests, and a check that the
+#             committed build matches the TypeScript sources;
+#   hassfest  Home Assistant's own validation of the integration: manifest, translations,
+#             services and config flow;
+#   hacs      HACS's validation of the repository: manifest, hacs.json, brand icon,
+#             description, topics and README.
+#
+# It can also be started by hand from the Actions tab (workflow_dispatch), for example
+# after changing on GitHub a setting that HACS checks, such as the topics.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The jobs only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # requirements_test.txt pins pytest-homeassistant-custom-component, which pins a
+      # Home Assistant release; that release needs Python 3.14.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - run: pip install -r requirements_test.txt ruff
+      - run: ruff check .
+      - run: pytest
+
+  card:
+    name: Wallbox card
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      # Node 22: the version used locally and the target of the test runner (test.mjs).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # npm ci installs exactly the versions in package-lock.json, so esbuild produces
+      # the same output as on the maintainer's machine.
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      # The integration serves the card from the committed build, not from the sources.
+      # Rebuilding it here must give the same file; a difference means the sources
+      # changed without `npm run build`, or the built file was edited by hand.
+      - name: Build and compare with the committed card
+        run: |
+          npm run build
+          git diff --exit-code -- ../custom_components/growatt_thor_cloud/frontend/thor-wallbox-card.js
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      # Reads the repository through the GitHub API, so no checkout is needed.
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # No result comment on pull requests: it would need write permission.
+          comment: "false"

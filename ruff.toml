@@ -1,0 +1,17 @@
+# Lint rules for all the Python code: the integration, its tests and the tools.
+# Run `ruff check .` from the repository root; CI runs the same command
+# (.github/workflows/ci.yml), so a clean local run means a clean CI run.
+#
+# Rule families:
+#   E, W  pycodestyle: errors and warnings on code style
+#   F     Pyflakes: unused imports and variables, undefined names
+#   B     flake8-bugbear: likely bugs and design problems
+#   UP    pyupgrade: syntax that newer Python versions replace
+#   SIM   flake8-simplify: code that can be written more simply
+#   RUF   Ruff's own rules
+#
+# E501 (line too long) is not enforced: lines are wrapped for readability, not to a
+# hard limit.
+[lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
