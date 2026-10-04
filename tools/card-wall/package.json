@@ -1,0 +1,14 @@
+{
+  "name": "card-wall",
+  "private": true,
+  "description": "Builds the Wallbox card images of the README (assets/card/wall-*.svg): see wall.mjs",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "wall": "node wall.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.12.0",
+    "svgo": "^4.1.0"
+  }
+}

@@ -343,6 +343,12 @@ is, since the hour of the switch is not known.
   ```bash
   cd frontend && npm install && npm run build
   ```
+- `tools/card-wall/`: rebuilds the Wallbox card images of this README
+  (`assets/card/wall-*.svg`) from the built card. Needs Google Chrome and Python with
+  PyMuPDF (`pip install pymupdf`); see `wall.mjs` for the details.
+  ```bash
+  cd tools/card-wall && npm install && npm run wall
+  ```
 - Tests (config flow, entities, actions, change rules, clock warning, Wallbox card, polling
   behaviour and API client, against a mocked cloud) and lint rules (`ruff.toml`). GitHub
   runs them on every push, together with the card's checks and the Home Assistant and HACS

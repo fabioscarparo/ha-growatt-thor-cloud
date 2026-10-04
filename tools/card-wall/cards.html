@@ -1,0 +1,281 @@
+<!doctype html>
+<!--
+  Renders ONE Wallbox card in one of the scenarios shown in the README images.
+
+  How it is used
+    wall.mjs serves this page together with the card the integration ships
+    (custom_components/growatt_thor_cloud/frontend/thor-wallbox-card.js, served here as
+    ./thor-wallbox-card.js), opens it in headless Chrome once per scenario and theme, and
+    prints the card to a PDF. It can also be opened by hand through the same server to
+    look at a scenario.
+
+  URL parameters
+    scenario  a key of SCENARIOS below (default: charging_fast_limit)
+    theme     "light" (default) or "dark"
+    lang      "en" (default) or "it": the card's language and number format
+
+  Contract with wall.mjs
+    Once the card is drawn and its fonts are loaded, the page sets its title to
+    "ready <width>x<height>" (the card's size in CSS pixels) and sizes the printed page
+    to the card, so the PDF holds exactly one card and nothing else.
+
+  What is mocked
+    The card needs only a few things from Home Assistant: the <ha-card> container, the
+    <home-assistant> element it waits for before registering itself, the theme's CSS
+    variables and a `hass` object (states, entity and device registries, translated
+    entity states). All of them are defined below, with the values of Home Assistant's
+    default light and dark themes. No Home Assistant instance is involved.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Wallbox card scenarios</title>
+<!-- Roboto, Home Assistant's font. display=block: text waits for the font instead of
+     showing a fallback, so the PDF never captures the wrong typeface. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=block">
+<style>
+  /* Print backgrounds and colours exactly as they are on screen. */
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Transparent page: the images show only the card, with its rounded corners. */
+  html, body { margin: 0; padding: 0; background: transparent; }
+  /* The variables of Home Assistant's default light theme that the card reads. */
+  body {
+    font-family: Roboto, Noto, sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased;
+    --card-background-color: #ffffff; --primary-background-color: #fafafa;
+    --primary-text-color: #141414; --secondary-text-color: #5e5e5e;
+    --disabled-text-color: #bdbdbd; --disabled-color: #bdbdbd; --divider-color: rgba(0,0,0,0.12);
+    --primary-color: #009ac7; --success-color: #43a047; --warning-color: #ffa600; --error-color: #db4437;
+    --info-color: #039be5; --teal-color: #009688; --purple-color: #926bc7; --deep-purple-color: #6e41ab;
+    --deep-orange-color: #ff6f22; --state-inactive-color: #9e9e9e; --state-unavailable-color: #bdbdbd;
+    --energy-solar-color: #ff9800; --energy-grid-consumption-color: #488fc2; --energy-grid-return-color: #8353d1;
+    --energy-battery-out-color: #4db6ac; --energy-battery-in-color: #f06292; --white-color: #fff;
+  }
+  /* What the default dark theme changes. */
+  body.dark {
+    --primary-background-color: #111111; --card-background-color: #1c1c1c;
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --disabled-text-color: #6f6f6f;
+    --divider-color: rgba(225,225,225,0.12); --disabled-color: #464646;
+  }
+  /* The width of a card in a dashboard column; every scenario is drawn at this width. */
+  thor-wallbox-card { display: block; width: 440px; }
+</style>
+<script>
+  // <ha-card>: Home Assistant's card container, reduced to its look (background, border,
+  // rounded corners), drawn with the theme variables above.
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).innerHTML =
+        "<style>:host{display:block;box-sizing:border-box;background:var(--ha-card-background,var(--card-background-color,#fff));" +
+        "border:1px solid var(--ha-card-border-color,var(--divider-color,#e0e0e0));border-radius:var(--ha-card-border-radius,12px);" +
+        "color:var(--primary-text-color)}</style><slot></slot>";
+    }
+  });
+  // <home-assistant>: the card registers itself only once Home Assistant's root element
+  // exists (see frontend/src/register.ts), so an empty element is enough.
+  customElements.define("home-assistant", class extends HTMLElement {});
+</script>
+</head>
+<body>
+<script type="module">
+  const params = new URLSearchParams(location.search);
+  const scenario = params.get("scenario") || "charging_fast_limit";
+  const lang = params.get("lang") || "en";
+  if (params.get("theme") === "dark") document.body.classList.add("dark");
+
+  // The card as the integration ships it; it defines <thor-wallbox-card>.
+  await import("./thor-wallbox-card.js");
+  await customElements.whenDefined("thor-wallbox-card");
+
+  // Entity registry. The card finds the charger's entities through the registry: every
+  // entity of the device, with the integration's platform and the entity's translation
+  // key (see frontend/src/entities.ts). `keys` maps the short names used in this page
+  // ("sensor.status") to the translation key ("status"); the entity ids themselves are
+  // made up, under the prefix P ("sensor.wallbox_status").
+  const P = "wallbox";
+  const keys = {
+    "sensor.status": "status", "sensor.power": "power", "sensor.current": "current", "sensor.voltage": "voltage",
+    "sensor.session_energy": "session_energy", "sensor.session_duration": "session_duration", "sensor.session_cost": "session_cost",
+    "sensor.session_limit": "session_limit", "sensor.session_progress": "session_progress",
+    "sensor.last_session": "last_session", "sensor.last_session_energy": "last_session_energy",
+    "sensor.next_reservation": "next_reservation", "sensor.error_code": "error_code", "sensor.vendor_error_code": "vendor_error_code",
+    "binary_sensor.cable_lock": "cable_lock", "select.charge_mode": "charge_mode", "select.authorization_mode": "authorization_mode",
+    "select.boost_type": "boost_type", "switch.charging": "charging", "switch.boost": "boost", "switch.import_grid": "import_grid",
+    "switch.warm_up": "warm_up", "number.import_grid_power": "import_grid_power", "number.boost_energy": "boost_energy",
+    "button.unlock": "unlock", "button.cancel_reservation": "cancel_reservation",
+    "time.off_peak_1_from": "off_peak_1_from", "time.off_peak_1_to": "off_peak_1_to",
+    "time.off_peak_2_from": "off_peak_2_from", "time.off_peak_2_to": "off_peak_2_to",
+    "time.off_peak_3_from": "off_peak_3_from", "time.off_peak_3_to": "off_peak_3_to",
+    "time.boost_departure": "boost_departure",
+  };
+  const entities = {};
+  for (const [key, suffix] of Object.entries(keys)) {
+    const [domain, tk] = key.split(".");
+    const id = `${domain}.${P}_${suffix}`;
+    entities[id] = { entity_id: id, device_id: "dev1", platform: "growatt_thor_cloud", translation_key: tk };
+  }
+
+  // Translated states, as hass.formatEntityState returns them in Home Assistant: the card
+  // shows these labels for the status, the charge mode and the Boost type.
+  const LABELS = {
+    en: {
+      status: { available: "Available", preparing: "Preparing", charging: "Charging", suspended_ev: "Suspended by vehicle",
+        suspended_evse: "Suspended by charger", finishing: "Finishing", reserved: "Scheduled start", unavailable: "Unavailable", faulted: "Faulted" },
+      charge_mode: { fast: "Fast", pv_linkage: "PV Linkage", off_peak: "Off-peak" },
+      boost_type: { manual: "Manual", smart: "Smart" },
+    },
+    it: {
+      status: { available: "Disponibile", preparing: "In preparazione", charging: "In carica", suspended_ev: "Sospesa dal veicolo",
+        suspended_evse: "Sospesa dalla wallbox", finishing: "In chiusura", reserved: "Avvio programmato", unavailable: "Non disponibile", faulted: "Guasto" },
+      charge_mode: { fast: "Fast", pv_linkage: "PV Linkage", off_peak: "Off-peak" },
+      boost_type: { manual: "Manuale", smart: "Smart" },
+    },
+  };
+
+  // States. A state is written as [state, attributes]; W(1800) is a power of 1800 W.
+  // `base` is an idle charger (available, Fast mode, nothing scheduled): each scenario
+  // overrides only what differs from it. sensor.pv, home, grid, export, battery and soc
+  // stand for the inverter's sensors that feed the card's energy flow.
+  const W = (v) => [String(v), { unit_of_measurement: "W" }];
+  const base = {
+    "sensor.status": ["available"], "sensor.power": W(0), "sensor.current": ["0", { unit_of_measurement: "A" }],
+    "sensor.voltage": ["0", { unit_of_measurement: "V" }], "sensor.session_energy": ["0", { unit_of_measurement: "kWh" }],
+    "sensor.session_duration": ["0", { unit_of_measurement: "min" }], "sensor.session_cost": ["0", { unit_of_measurement: "EUR" }],
+    "sensor.session_limit": ["none"], "sensor.session_progress": ["unknown", { unit_of_measurement: "%" }],
+    "sensor.last_session": ["2026-09-28T19:40:00+02:00"], "sensor.last_session_energy": ["8.4", { unit_of_measurement: "kWh" }],
+    "sensor.next_reservation": ["unknown"], "sensor.error_code": ["NoError"], "sensor.vendor_error_code": [""],
+    "binary_sensor.cable_lock": ["on"], "select.charge_mode": ["fast", { options: ["fast", "pv_linkage", "off_peak"] }],
+    "select.authorization_mode": ["app"], "select.boost_type": ["manual"], "switch.charging": ["off"], "switch.boost": ["off"],
+    "switch.import_grid": ["unavailable"], "switch.warm_up": ["off"], "number.import_grid_power": ["unavailable", { unit_of_measurement: "kW" }],
+    "number.boost_energy": ["unknown", { unit_of_measurement: "kWh" }], "button.unlock": ["unknown"], "button.cancel_reservation": ["unavailable"],
+    "time.off_peak_1_from": ["23:00:00"], "time.off_peak_1_to": ["07:00:00"], "time.off_peak_2_from": ["13:00:00"], "time.off_peak_2_to": ["15:00:00"],
+    "time.off_peak_3_from": ["00:00:00"], "time.off_peak_3_to": ["00:00:00"], "time.boost_departure": ["unknown"],
+    "sensor.pv": W(0), "sensor.home": W(0), "sensor.grid": W(0), "sensor.export": W(0), "sensor.battery": W(0),
+    "sensor.soc": ["0", { unit_of_measurement: "%" }],
+  };
+
+  // Building blocks of the scenarios: an open session (kWh, minutes, EUR), a charger
+  // that is charging (W, A, V) and the charge modes other than Fast.
+  const session = (energy, minutes, cost) => ({
+    "sensor.session_energy": [String(energy), { unit_of_measurement: "kWh" }],
+    "sensor.session_duration": [String(minutes), { unit_of_measurement: "min" }],
+    "sensor.session_cost": [String(cost), { unit_of_measurement: "EUR" }],
+  });
+  const charging = (watts, amps, volts) => ({
+    "sensor.status": ["charging"], "sensor.power": W(watts), "sensor.current": [String(amps), { unit_of_measurement: "A" }],
+    "sensor.voltage": [String(volts), { unit_of_measurement: "V" }], "switch.charging": ["on"], "button.unlock": ["unavailable"],
+    "binary_sensor.cable_lock": ["off"],
+  });
+  const pv = { "select.charge_mode": ["pv_linkage", { options: ["fast", "pv_linkage", "off_peak"] }] };
+  const offPeak = { "select.charge_mode": ["off_peak", { options: ["fast", "pv_linkage", "off_peak"] }] };
+
+  // Card options of the energy flow (see the README's Wallbox card section): `flow` sets
+  // solar, home and grid import; `battery` adds grid export and the home battery, whose
+  // sensor is positive while discharging (battery_charging_positive left off).
+  const flow = { solar_power: "sensor.pv", home_power: "sensor.home", grid_import_power: "sensor.grid" };
+  const battery = { ...flow, grid_export_power: "sensor.export", battery_power: "sensor.battery", battery_soc: "sensor.soc" };
+  const soc = (value) => [String(value), { unit_of_measurement: "%" }];
+
+  // The scenarios, as [state overrides, card options]. The powers add up as they would in
+  // a real home, so the flow, the surplus and the notes under it read consistently: the
+  // home sensor includes the wallbox, e.g. in charging_fast_limit solar 2.5 kW + battery
+  // 2.5 kW + grid 3.49 kW = home 8.49 kW, of which 7.19 kW go to the car.
+  const SCENARIOS = {
+    // Fast with an energy limit; the home battery helps the car.
+    charging_fast_limit: [{ ...charging(7192, 31, 232), ...session(3.52, 30, 0.74), "sensor.session_limit": ["energy", { value: 10 }],
+      "sensor.session_progress": ["35.2", { unit_of_measurement: "%" }], "sensor.pv": W(2500), "sensor.home": W(8492), "sensor.grid": W(3492),
+      "sensor.battery": W(2500), "sensor.soc": soc(58) }, battery],
+    // Idle, no car.
+    available: [{}, {}],
+    // Car plugged in, waiting to start.
+    preparing: [{ "sensor.status": ["preparing"], "binary_sensor.cable_lock": ["off"] }, {}],
+    // Session closing.
+    finishing: [{ "sensor.status": ["finishing"], ...session(10.0, 84, 2.10), "binary_sensor.cable_lock": ["off"] }, {}],
+    // PV Linkage on surplus only, with the home battery full.
+    pv_surplus: [{ ...charging(2796, 12, 233), ...pv, ...session(1.9, 41, 0.40), "switch.import_grid": ["off"],
+      "number.import_grid_power": ["2", { unit_of_measurement: "kW" }], "sensor.pv": W(4100), "sensor.home": W(4096),
+      "sensor.soc": soc(100) }, battery],
+    // PV Linkage with grid import: the grid tops the surplus up.
+    pv_grid: [{ ...charging(3696, 16, 231), ...pv, ...session(2.6, 48, 0.55), "switch.import_grid": ["on"],
+      "number.import_grid_power": ["2", { unit_of_measurement: "kW" }], "sensor.pv": W(2300), "sensor.home": W(4096), "sensor.grid": W(1800) }, flow],
+    // PV Linkage with a smart Boost due by 07:30.
+    pv_boost: [{ ...charging(7192, 31, 232), ...pv, ...session(4.2, 35, 0.88), "switch.import_grid": ["off"], "switch.boost": ["on"],
+      "select.boost_type": ["smart"], "number.boost_energy": ["10", { unit_of_measurement: "kWh" }], "time.boost_departure": ["07:30:00"],
+      "sensor.session_progress": ["42", { unit_of_measurement: "%" }], "sensor.home": W(7600), "sensor.grid": W(7600) }, flow],
+    // PV Linkage waiting for surplus: the charging home battery takes the solar first.
+    pv_waiting: [{ ...pv, "sensor.status": ["suspended_evse"], ...session(0.8, 65, 0.17), "switch.import_grid": ["off"],
+      "binary_sensor.cable_lock": ["off"], "switch.charging": ["on"], "button.unlock": ["unavailable"],
+      "sensor.pv": W(3800), "sensor.home": W(900), "sensor.export": W(300), "sensor.battery": W(-2600), "sensor.soc": soc(64) }, battery],
+    // Off-peak, waiting for the next slot.
+    offpeak_waiting: [{ ...offPeak, "sensor.status": ["suspended_evse"], ...session(0, 5, 0), "binary_sensor.cable_lock": ["off"],
+      "switch.charging": ["on"], "button.unlock": ["unavailable"], "sensor.home": W(450), "sensor.grid": W(450) }, flow],
+    // Off-peak, charging in a slot.
+    offpeak_charging: [{ ...charging(7192, 31, 232), ...offPeak, ...session(6.3, 53, 0.76), "sensor.home": W(7600), "sensor.grid": W(7600) }, flow],
+    // A scheduled start every day at 06:30, with an energy limit.
+    scheduled: [{ "sensor.status": ["reserved"], "sensor.next_reservation": ["2026-10-03T06:30:00+02:00", { every_day: true, limit: "energy", limit_value: 20 }],
+      "button.cancel_reservation": ["unknown"] }, {}],
+    // The car stopped drawing power (full, or a limit set in the car); Warm-up is on.
+    suspended_ev: [{ "sensor.status": ["suspended_ev"], ...session(18.4, 156, 3.86), "switch.warm_up": ["on"], "switch.charging": ["on"],
+      "binary_sensor.cable_lock": ["off"] }, {}],
+    // A fault reported by the charger.
+    faulted: [{ "sensor.status": ["faulted"], "sensor.error_code": ["GroundFailure"], "button.unlock": ["unavailable"] }, {}],
+    // The charger is not connected to the Growatt cloud.
+    offline: [{ "sensor.status": ["unavailable"], "sensor.power": ["unavailable"], "button.unlock": ["unavailable"] }, flow],
+    // RFID mode: start and stop with the card only.
+    rfid: [{ "sensor.status": ["preparing"], "select.authorization_mode": ["rfid"], "binary_sensor.cable_lock": ["off"] }, {}],
+  };
+
+  // The `hass` object the card receives in Home Assistant, reduced to what it reads.
+  const [overrides, extra] = SCENARIOS[scenario];
+  const states = {};
+  for (const [key, [state, attributes = {}]] of Object.entries({ ...base, ...overrides })) {
+    const id = keys[key] ? `${key.split(".")[0]}.${P}_${keys[key]}` : key;
+    states[id] = { entity_id: id, state, attributes, last_changed: "", last_updated: "" };
+  }
+  const locale = lang === "it" ? "it" : "en-GB";
+  const hass = {
+    states, entities, devices: { dev1: { id: "dev1", name: "THOR 07AS", name_by_user: null } },
+    language: lang, locale: { language: locale, number_format: "language" },
+    // Buttons do nothing here.
+    callService: async () => {},
+    // A state as Home Assistant displays it: the translated label, a currency amount, or
+    // the raw value.
+    formatEntityState(obj, state) {
+      const value = state ?? obj.state;
+      const tk = entities[obj.entity_id]?.translation_key;
+      const label = LABELS[lang]?.[tk]?.[value];
+      if (label) return label;
+      const n = Number(value);
+      if (obj.attributes.unit_of_measurement === "EUR") {
+        return new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(n);
+      }
+      return value;
+    },
+  };
+
+  // Draw the card, then wait until it is final: Lit has rendered it (updateComplete), the
+  // web fonts are loaded, and two animation frames have passed so that layout-dependent
+  // parts (the battery's links, measured after the first render) are drawn too.
+  const card = document.createElement("thor-wallbox-card");
+  card.setConfig({ type: "custom:thor-wallbox-card", device_id: "dev1", ...extra });
+  card.hass = hass;
+  document.body.appendChild(card);
+  await card.updateComplete;
+  await document.fonts.ready;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  // Size the printed page to the card, so the PDF holds the card and nothing else, and
+  // tell wall.mjs the page is ready, with the card's size.
+  const rect = card.getBoundingClientRect();
+  const width = Math.ceil(rect.width);
+  const height = Math.ceil(rect.height);
+  const page = document.createElement("style");
+  page.textContent = `@page { size: ${width}px ${height}px; margin: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; }`;
+  document.head.appendChild(page);
+  document.title = `ready ${width}x${height}`;
+</script>
+</body>
+</html>
