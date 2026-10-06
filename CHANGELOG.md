@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3
+### Changed
+- New integration icon in Home Assistant: the wallbox in white on Home Assistant blue.
+- README: a new title graphic under the icon, with a variant for dark mode.
+
 ## 0.8.2
 ### Changed
 - *Wallbox card*: no longer marked as beta.

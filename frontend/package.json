@@ -1,6 +1,6 @@
 {
   "name": "thor-wallbox-card",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "description": "Wallbox card for the Growatt THOR EV Charger (Cloud) integration",
   "license": "MIT",
