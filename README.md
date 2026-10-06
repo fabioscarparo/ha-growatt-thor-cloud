@@ -1,8 +1,13 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Growatt THOR EV Charger" width="110">
+  <img src="assets/icon.png" alt="Growatt THOR EV Charger" width="80">
 </p>
 
-<h1 align="center">Growatt THOR EV Charger for Home Assistant</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark.svg">
+    <img src="assets/header-light.svg" alt="Growatt THOR Home Assistant" width="520">
+  </picture>
+</p>
 
 <p align="center">
   <strong>Home Assistant integration for Growatt THOR wallboxes,<br>
