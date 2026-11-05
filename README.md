@@ -168,7 +168,8 @@ charger, shown in **Fast - Next scheduled start** and removed with **Fast - Canc
 start**. Growatt allows one scheduled start per account at a time. A start time already passed
 today is scheduled for tomorrow. Cost and energy limits must be above 0; a duration limit goes
 from 1 minute to 23 h 59 min. These settings live in Home Assistant until you press the button
-and are kept across restarts. Nothing is preset: the charger does not keep these values, so
+and are kept across restarts. They show the next scheduled start, also one made outside Home
+Assistant, until you change them. Nothing is preset: the charger does not keep these values, so
 they start empty (shown as unknown) and pressing the button with a missing value reports an
 error.
 

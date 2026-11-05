@@ -199,6 +199,52 @@ async def test_reservations(hass: HomeAssistant, mock_api) -> None:
     mock_api.async_cancel_reservation.assert_awaited_once_with(SN, RESERVATION)
 
 
+async def test_start_fields_follow_a_reservation(hass: HomeAssistant, mock_api) -> None:
+    """A scheduled start made outside HA shows in the start and limit fields."""
+    set_connector(mock_api, reservations=[RESERVATION])  # Every day at 23:00, 20 kWh.
+    await setup_integration(hass)
+    assert state(hass, "select", "start_mode").state == "every_day"
+    assert state(hass, "time", "start_time").state == "23:00:00"
+    assert state(hass, "select", "charge_limit").state == "energy"
+    assert state(hass, "number", "limit_energy").state == "20.0"
+
+
+async def test_start_fields_follow_a_single_start(hass: HomeAssistant, mock_api, freezer) -> None:
+    """A single scheduled start without a limit: at a time, no limit."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-10-02 12:00:00+02:00")
+    single = {
+        **RESERVATION,
+        "loopType": -1,
+        "loopValue": "06:30",
+        "expiryDate": "2026-10-03T06:30:00.000Z",
+        "cKey": "",
+        "cValue": "",
+    }
+    set_connector(mock_api, reservations=[single])
+    await setup_integration(hass)
+    assert state(hass, "select", "start_mode").state == "at_time"
+    assert state(hass, "time", "start_time").state == "06:30:00"
+    assert state(hass, "select", "charge_limit").state == "none"
+
+
+async def test_staged_start_kept_until_another_reservation(
+    hass: HomeAssistant, mock_api
+) -> None:
+    """Start values staged in HA stay; a new scheduled start is followed again."""
+    set_connector(mock_api, reservations=[RESERVATION])
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+
+    await call(hass, "time", "set_value", "start_time", time="21:15:00")
+    await coordinator.async_refresh()
+    assert state(hass, "time", "start_time").state == "21:15:00"
+
+    set_connector(mock_api, reservations=[{**RESERVATION, "reservationId": 9, "loopValue": "05:45"}])
+    await coordinator.async_refresh()
+    assert state(hass, "time", "start_time").state == "05:45:00"
+
+
 async def test_session_limit(hass: HomeAssistant, mock_api) -> None:
     """The running session's limit comes from the connector's cKey/cValue."""
     set_connector(mock_api, cKey="G_SetTime", cValue="90")

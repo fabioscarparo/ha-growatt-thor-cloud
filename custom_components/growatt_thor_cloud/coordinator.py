@@ -137,6 +137,10 @@ class ChargePlan:
     off_peak_extra: list[str] = field(default_factory=list)
     # True once the user staged slots in HA; until then they follow the charger.
     off_peak_staged: bool = False
+    # The scheduled start that the start and limit fields last followed, and whether the
+    # user staged their own values since (see schedule._sync_start).
+    start_followed: str | None = None
+    start_staged: bool = False
 
 
 class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):

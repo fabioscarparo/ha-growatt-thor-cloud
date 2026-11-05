@@ -33,6 +33,9 @@ from .entity import to_float
 LIMIT_KEYS = {"cost": LIMIT_COST, "energy": LIMIT_ENERGY, "duration": LIMIT_DURATION}
 LIMIT_TYPES = {key: limit for limit, key in LIMIT_KEYS.items()}
 
+# Plan fields of the next start, which follow a scheduled start made outside HA.
+START_FIELDS = ("start", "start_time", "limit", "limit_cost", "limit_energy", "limit_duration")
+
 # Boost exists in PV Linkage (manual or smart) and Off-peak (smart only).
 BOOST_MODES = (MODE_PV_LINKAGE, MODE_OFF_PEAK)
 
@@ -140,6 +143,32 @@ def next_reservation(charger: ThorCharger) -> tuple[datetime, dict[str, Any]] | 
     return min(upcoming, key=lambda item: item[0]) if upcoming else None
 
 
+def _sync_start(plan: ChargePlan, charger: ThorCharger) -> None:
+    """Show the next scheduled start in the start and limit fields.
+
+    A scheduled start that appears is followed, wherever it was made; once the
+    user stages their own start or limit values, those stay until another one
+    appears.
+    """
+    if (upcoming := next_reservation(charger)) is None:
+        return
+    at, reservation = upcoming
+    reservation_id = str(reservation.get("reservationId") or reservation.get("expiryDate"))
+    if reservation_id != plan.start_followed:
+        plan.start_followed = reservation_id
+        plan.start_staged = False
+    if plan.start_staged:
+        return
+    plan.start = "every_day" if str(reservation.get("loopType")) == "0" else "at_time"
+    plan.start_time = at.time().replace(second=0, microsecond=0)
+    plan.limit = LIMIT_TYPES.get(str(reservation.get("cKey") or ""), "none")
+    if plan.limit != "none":
+        # cValue2 is the value to display; cValue is echoed back to cancel.
+        value = to_float(reservation.get("cValue2", reservation.get("cValue")))
+        if value is not None:
+            setattr(plan, f"limit_{plan.limit}", int(value) if plan.limit == "duration" else value)
+
+
 # --- Boost ----------------------------------------------------------------
 
 
@@ -161,13 +190,15 @@ def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
 
     Boost settings follow the charger while Boost runs, the grid import while
     it is on, off-peak slots while in Off-peak (and until the user stages
-    their own): entities stay truthful and edits start from what the charger
-    actually does.
+    their own), and the start and limit fields the next scheduled start, also
+    one made outside HA: entities stay truthful and edits start from what the
+    charger actually does.
     """
     plan = coordinator.plan(sn)
     charger = coordinator.data.get(sn)
     if charger is None:
         return plan
+    _sync_start(plan, charger)
     _sync_off_peak(plan, charger)
     if is_boost_on(charger):
         _sync_boost(plan, charger)
@@ -378,6 +409,8 @@ async def async_update_plan(
     setattr(plan, field, value)
     if live == LIVE_OFF_PEAK:
         plan.off_peak_staged = True
+    if field in START_FIELDS:
+        plan.start_staged = True
     coordinator.async_update_listeners()
     if sent:
         await coordinator.async_refresh_after_write()
