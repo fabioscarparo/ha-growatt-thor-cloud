@@ -43,10 +43,14 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
 `/ocpp/api/` commands:
 - `noConfig` (`userId, lan`): `sfield` = settings protected by an installer password, which
   comes in the same reply (`configWord`, `password`); never print or store it.
-- `selectLimitPower` (`chargeId`): power limits by time slot, `isEnable` (1/0), `cid` and
-  `config[]` of `{"loop": "1111111", "time": "HH:MM-HH:MM", "power": "<kW>"}`, one `loop`
-  flag per weekday, up to 10 slots. Written with `updateLimitPower` (`isEnable`, `cid`,
-  `config`).
+- `selectLimitPower` (`chargeId`): the load balancing schedule: `isEnable` (1/0), `cid` (the
+  schedule's id) and `config[]` of `{"name", "time": "HH:MM-HH:MM", "loop": "1111100",
+  "power": "<kW>"}`, up to 10 slots. `loop` has one flag per weekday from Monday; `time` is on
+  the charger's clock, both ends included, and may run past midnight; `name` is only a label.
+  A limit for the whole day is one slot `00:00-23:59` with `loop` `1111111`. The reply also
+  carries `ctime` (last change, epoch ms) and `userId`. Replaced as a whole with
+  `updateLimitPower` (`isEnable` and `cid` as strings, `config` as the same list): slots must
+  not overlap, whatever their days, and a slot's start must differ from its end.
 - `chargeData` (`chargeId, timeType, time, requestType:"0"`): energy and cost per period,
   `data[]` of `{t, energy, cost}`; `timeType` 0 = days of a month (`time` `YYYY-MM`), 1 = months
   of a year (`YYYY`), 2 = years.
@@ -91,7 +95,8 @@ Field meanings:
 - `G_AutoChargeTime`: window in which charging is allowed, `"HH:MM-HH:MM"`, empty = always.
 - `G_RandDelayChargeTime`: random delay before a session starts, s (0 = off, 600 by default,
   1-1800).
-- `G_ExternalLimitPower`: highest grid import for load balancing, kW.
+- `G_ExternalLimitPower`: highest grid import for load balancing, kW: the limit the charger
+  applies. It matched the power of the `selectLimitPower` slots in every reading.
 - `UnlockConnectorOnEVSideDisconnect`: `"true"` = the cable is unlocked at the charger once it
   is unplugged from the EV, `"false"` = it stays locked (sent as string).
 - Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,

@@ -33,6 +33,7 @@ from .clock import charger_offset, dst_period, time_zone
 from .const import ACTIVE_STATES, CONNECTOR_STATUS, SESSION_STATES
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
+from .load_balancing import schedule_attributes, turned_on
 from .schedule import LIMIT_TYPES, boost_params, is_boost_on, next_reservation
 
 # G_ExternalSamplingCurWring -> how the charger measures the grid.
@@ -200,6 +201,8 @@ class ThorSensorDescription(SensorEntityDescription):
     attrs_fn: Callable[[ThorCharger], dict[str, Any]] | None = None
     # When set, the unit is the charger currency (e.g. "EUR") plus this suffix.
     currency_unit: str | None = None
+    # When set, the sensor is available only while this returns True.
+    available_fn: Callable[[ThorCharger], bool] | None = None
 
 
 SENSORS: tuple[ThorSensorDescription, ...] = (
@@ -305,6 +308,17 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         currency_unit="",
         value_fn=lambda c: to_float(c.last_session.get("cost")),
     ),
+    # The household limit of load balancing, as the charger applies it; the schedule
+    # behind it in the attributes. Available while load balancing is on.
+    ThorSensorDescription(
+        key="load_balancing_limit",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        suggested_display_precision=1,
+        value_fn=lambda c: to_float(c.config.get("G_ExternalLimitPower")),
+        attrs_fn=schedule_attributes,
+        available_fn=turned_on,
+    ),
     ThorSensorDescription(
         key="next_reservation",
         device_class=SensorDeviceClass.TIMESTAMP,
@@ -409,6 +423,11 @@ class ThorSensor(ThorEntity, SensorEntity):
     def __init__(self, coordinator, sn: str, description: ThorSensorDescription) -> None:
         super().__init__(coordinator, sn, description.key)
         self.entity_description = description
+
+    @property
+    def available(self) -> bool:
+        available_fn = self.entity_description.available_fn
+        return super().available and (available_fn is None or available_fn(self.charger))
 
     @property
     def native_value(self) -> StateType | datetime:

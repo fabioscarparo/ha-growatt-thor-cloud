@@ -81,6 +81,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Fast - Next scheduled start | timestamp | `every_day`, `limit`, `limit_value` attributes |
 | Last charge | timestamp | end of the last session |
 | Last charge - Cost, Duration, Energy, Start | sensor | the last session, still shown once the session sensors reset |
+| Load balancing limit | sensor, kW | household limit that load balancing applies, while it is on; its time slots (days, from, to, kW) in the `slots` attribute |
 | Power | sensor, W | computed as voltage x current (single-phase) |
 | Session - Cost, Duration, Energy | sensor | reset at each session |
 | Session - Limit | enum | limit of the current session; value in the `value` attribute |
@@ -104,6 +105,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Fast - Start at | time | time of a scheduled start |
 | General - Authorization mode | select | APP/RFID / RFID / Plug & Charge |
 | General - Load balancing | switch | keeps the home's grid draw under the set limit; unavailable in PV Linkage |
+| General - Load balancing all-day limit | number | kW: one limit for the whole day; setting it replaces any time slots, and it shows unknown while there are some |
 | General - Max current | number | 6-32 A; up to 16 A on 3.6 kW and 11 kW chargers |
 | General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |
 | Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
@@ -143,7 +145,7 @@ After switching to PV Linkage or Off-peak, plug the cable in again if charging d
 by itself.
 
 **General** settings apply in every mode and can be changed at any time, also during a
-session. *General - Load balancing* is not available in PV Linkage.
+session. *General - Load balancing* and its limits are not available in PV Linkage.
 
 ### During a session
 While a session is open (charging, suspended or finishing), the charge mode and its settings
@@ -210,6 +212,18 @@ dashboard settings.
 - `growatt_thor_cloud.set_boost`: `enabled`, `type` (manual/smart), `from`, `to`, `departure`,
   `energy`; missing values are taken from the Boost settings. The Boost entities follow what
   was sent. Outside a session only.
+- `growatt_thor_cloud.set_load_balancing`: replace the load balancing schedule with up to 10
+  `slots`, each with `from`, `to` (included), `power` in kW and `days` (`mon` to `sun`, every
+  day if omitted). Slots must not overlap, whatever their days; `00:00` to `23:59` is the
+  whole day. Turns load balancing on.
+  ```yaml
+  action: growatt_thor_cloud.set_load_balancing
+  data:
+    device_id: <charger device>
+    slots:
+      - {from: "00:00", to: "06:59", power: 6}
+      - {from: "07:00", to: "23:59", power: 3.5, days: [mon, tue, wed, thu, fri]}
+  ```
 
 ## Wallbox card
 The integration comes with a dashboard card for the charger, drawn with Home Assistant's own

@@ -36,6 +36,7 @@ CONFIG = {
     "G_SolarMode": 2,
     "G_ChargerMode": "3",
     "G_ExternalLimitPowerEnable": 0,
+    "G_ExternalLimitPower": 5,
     "G_LCDCloseEnable": "Disable",
     "G_FullContinueChargeEnable": "Disable",
     "G_SolarLimitPower": 1.38,
@@ -54,6 +55,14 @@ CONFIG = {
     "isSupportLoadBalancing": True,
     "isSupportLowRateMode": True,
     "isSupport_LCDEnable": True,
+}
+# Load balancing schedule (selectLimitPower): one 5 kW limit for the whole day.
+LOAD_BALANCING = {
+    "ctime": 1793817519000,
+    "config": [{"loop": "1111111", "name": "Orario1", "power": "5", "time": "00:00-23:59"}],
+    "chargeId": SN,
+    "cid": 4425,
+    "isEnable": 1,
 }
 # Idle charger: settings and modes can be changed.
 CONNECTOR = {
@@ -117,6 +126,7 @@ def mock_api():
     api.async_get_reservations.side_effect = lambda sn, cid: []
     api.async_get_charge_mode.side_effect = lambda sn, cid: copy.deepcopy(CHARGE_MODE)
     api.async_get_sessions.side_effect = lambda sn, count: []
+    api.async_get_load_balancing.side_effect = lambda sn: copy.deepcopy(LOAD_BALANCING)
     with (
         patch("custom_components.growatt_thor_cloud.GrowattThorApi", return_value=api),
         patch("custom_components.growatt_thor_cloud.config_flow.GrowattThorApi", return_value=api),

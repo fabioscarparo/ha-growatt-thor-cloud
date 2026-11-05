@@ -1,4 +1,4 @@
-"""Actions: scheduled start, reservation cancel and Boost.
+"""Actions: scheduled start, reservation cancel, Boost and load balancing.
 
 They go through the same helpers as the dashboard entities; values passed to
 an action are used as given, without touching the staged plan (except Boost,
@@ -18,6 +18,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .const import DOMAIN
 from .coordinator import ChargePlan, GrowattThorCoordinator
+from .load_balancing import DAYS, MAX_POWER, MIN_POWER, Slot, async_set_slots
 from .schedule import (
     async_cancel_reservations,
     async_set_boost,
@@ -48,6 +49,23 @@ BOOST_SCHEMA = vol.Schema(
         vol.Optional("to"): cv.time,
         vol.Optional("departure"): cv.time,
         vol.Optional("energy"): POSITIVE,
+    }
+)
+# One load balancing slot; the end is included, and no days means every day.
+SLOT_SCHEMA = vol.Schema(
+    {
+        vol.Required("from"): cv.time,
+        vol.Required("to"): cv.time,
+        vol.Required("power"): vol.All(
+            vol.Coerce(float), vol.Range(min=MIN_POWER, max=MAX_POWER)
+        ),
+        vol.Optional("days", default=list(DAYS)): vol.All(cv.ensure_list, [vol.In(DAYS)]),
+    }
+)
+LOAD_BALANCING_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required("slots"): vol.All(cv.ensure_list, [SLOT_SCHEMA]),
     }
 )
 # Boost action field -> ChargePlan field.
@@ -121,6 +139,25 @@ async def _async_boost(call: ServiceCall) -> None:
     await coordinator.async_refresh_after_write()
 
 
+async def _async_load_balancing(call: ServiceCall) -> None:
+    coordinator, sn = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    slots = [
+        Slot(
+            # The charger works in whole minutes.
+            slot["from"].replace(second=0, microsecond=0),
+            slot["to"].replace(second=0, microsecond=0),
+            slot["power"],
+            tuple(day for day in DAYS if day in slot["days"]),
+        )
+        for slot in call.data["slots"]
+    ]
+    with ha_errors("Could not set load balancing"):
+        await async_set_slots(coordinator, sn, slots)
+    # The limit sensor and the all-day limit show the new schedule.
+    coordinator.async_update_listeners()
+    await coordinator.async_refresh_after_write()
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the integration's actions (once, for all config entries)."""
@@ -129,3 +166,6 @@ def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, "cancel_reservation", _async_cancel, schema=CANCEL_SCHEMA
     )
     hass.services.async_register(DOMAIN, "set_boost", _async_boost, schema=BOOST_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, "set_load_balancing", _async_load_balancing, schema=LOAD_BALANCING_SCHEMA
+    )

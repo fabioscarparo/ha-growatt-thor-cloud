@@ -79,3 +79,23 @@ set_boost:
           step: 0.1
           unit_of_measurement: kWh
           mode: box
+
+set_load_balancing:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: growatt_thor_cloud
+    slots:
+      required: true
+      example: |
+        - from: "00:00"
+          to: "06:59"
+          power: 6
+        - from: "07:00"
+          to: "23:59"
+          power: 3.5
+          days: [mon, tue, wed, thu, fri]
+      selector:
+        object:

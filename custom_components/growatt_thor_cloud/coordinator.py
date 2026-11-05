@@ -46,6 +46,12 @@ def clock_issue_id(sn: str) -> str:
     return f"time_zone_{sn}"
 
 
+def supports(config: dict[str, Any], feature: str) -> bool:
+    """A feature flag of the settings (isSupport...); a missing flag means supported."""
+    value = config.get(feature)
+    return value is None or str(value).lower() in ("true", "1")
+
+
 @dataclass
 class ThorCharger:
     """Snapshot of one charger, one raw API payload per endpoint."""
@@ -60,6 +66,8 @@ class ThorCharger:
     last_session: dict[str, Any] = field(default_factory=dict)
     # Ended sessions of /ocpp/api/chargeRecord, newest first.
     sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Load balancing schedule (selectLimitPower); empty where load balancing is not supported.
+    load_balancing: dict[str, Any] = field(default_factory=dict)
 
     @property
     def price_conf(self) -> list[dict[str, Any]]:
@@ -91,8 +99,7 @@ class ThorCharger:
 
     def supports(self, feature: str) -> bool:
         """A feature flag of the settings (isSupport...); a missing flag means supported."""
-        value = self.config.get(feature)
-        return value is None or str(value).lower() in ("true", "1")
+        return supports(self.config, feature)
 
 
 @dataclass
@@ -299,6 +306,14 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 else:
                     sessions = [s for s in history if s.get("sysEndTime") or s.get("endtime")]
                     last_session = sessions[0] if sessions else last_session
+            load_balancing = previous.load_balancing if previous else {}
+            # A setting like the others: read with them, and after a confirmed write.
+            if (refresh_config or previous is None) and supports(config, "isSupportLoadBalancing"):
+                try:
+                    load_balancing = await self.api.async_get_load_balancing(sn)
+                except GrowattThorApiError as err:
+                    # Secondary data, like the reservations.
+                    _LOGGER.debug("Load balancing schedule not available for %s: %s", sn, err)
             chargers[sn] = ThorCharger(
                 sn=sn,
                 summary=summary,
@@ -308,6 +323,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 charge_mode=await self.api.async_get_charge_mode(sn, CONNECTOR_ID),
                 last_session=last_session,
                 sessions=sessions,
+                load_balancing=load_balancing,
             )
         if refresh_config:
             self._config_fetched_at = now

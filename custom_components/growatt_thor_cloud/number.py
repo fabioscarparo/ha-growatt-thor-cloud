@@ -28,6 +28,15 @@ from .api import GrowattThorError
 from .charge_mode import MODE_PV_LINKAGE
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import PlanStoredData, ThorEntity, check_owner, to_float
+from .load_balancing import (
+    ALL_DAY,
+    MAX_POWER,
+    MIN_POWER,
+    Slot,
+    all_day_limit,
+    async_set_slots,
+    in_use as load_balancing_in_use,
+)
 from .schedule import (
     LIVE_BOOST,
     LIVE_IMPORT_GRID,
@@ -190,6 +199,7 @@ async def async_setup_entry(
         entities.extend(
             ThorPlanNumber(coordinator, sn, description) for description in PLAN_NUMBERS
         )
+        entities.append(ThorLoadBalancingNumber(coordinator, sn))
     async_add_entities(entities)
 
 
@@ -285,3 +295,37 @@ class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
                 self._convert(value),
                 self.entity_description.live,
             )
+
+
+class ThorLoadBalancingNumber(ThorEntity, NumberEntity):
+    """One load balancing limit for the whole day, kept as a single all-day slot.
+
+    Shows the limit while the schedule is that single slot, and unknown while it has
+    other slots; setting a value replaces them (see load_balancing.py).
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = NumberDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_native_min_value = MIN_POWER
+    _attr_native_max_value = MAX_POWER
+    _attr_native_step = 0.1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "load_balancing_all_day")
+
+    @property
+    def available(self) -> bool:
+        return super().available and load_balancing_in_use(self.charger)
+
+    @property
+    def native_value(self) -> float | None:
+        return all_day_limit(self.charger)
+
+    async def async_set_native_value(self, value: float) -> None:
+        with ha_errors("Could not set the load balancing limit"):
+            await async_set_slots(self.coordinator, self._sn, [Slot(*ALL_DAY, round(value, 1))])
+        # The limit sensor shows the new schedule too.
+        self.coordinator.async_update_listeners()
+        await self.coordinator.async_refresh_after_write()

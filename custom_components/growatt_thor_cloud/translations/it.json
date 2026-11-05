@@ -57,6 +57,9 @@
       },
       "boost_energy": {
         "name": "Boost smart - Energia"
+      },
+      "load_balancing_all_day": {
+        "name": "Generale - Limite bilanciamento carico tutto il giorno"
       }
     },
     "select": {
@@ -240,6 +243,17 @@
       },
       "protection_temperature": {
         "name": "Temperatura di protezione"
+      },
+      "load_balancing_limit": {
+        "name": "Limite bilanciamento carico",
+        "state_attributes": {
+          "schedule_enabled": {
+            "name": "Programma attivo"
+          },
+          "slots": {
+            "name": "Fasce"
+          }
+        }
       }
     },
     "switch": {
@@ -394,6 +408,20 @@
         "energy": {
           "name": "Energia",
           "description": "Boost smart: energia da garantire."
+        }
+      }
+    },
+    "set_load_balancing": {
+      "name": "Imposta il bilanciamento del carico",
+      "description": "Sostituisce il programma del bilanciamento del carico: il limite di potenza della casa per fascia oraria, fino a 10 fasce. Attiva il bilanciamento.",
+      "fields": {
+        "device_id": {
+          "name": "Wallbox",
+          "description": "La wallbox THOR."
+        },
+        "slots": {
+          "name": "Fasce",
+          "description": "Fasce con from, to (compreso) e power in kW, più days (da mon a sun; tutti i giorni se omesso). Le fasce non si devono sovrapporre, qualunque siano i giorni; dalle 00:00 alle 23:59 è tutto il giorno."
         }
       }
     }

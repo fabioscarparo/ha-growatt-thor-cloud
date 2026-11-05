@@ -138,11 +138,32 @@ class GrowattThorApi:
         payload = {"sn": sn, "page": 1, "psize": count}
         return (await self._call("/ocpp/api/chargeRecord", payload)).get("data") or []
 
+    async def async_get_load_balancing(self, sn: str) -> dict[str, Any]:
+        """Load balancing schedule: isEnable, cid and the time slots with their power limit."""
+        payload = {"cmd": "selectLimitPower", "chargeId": sn}
+        data = (await self._call("/ocpp/api/", payload)).get("data") or {}
+        # userId is the account name: not needed, so not kept.
+        return {k: v for k, v in data.items() if k != "userId"}
+
     # --- Write ------------------------------------------------------------
 
     async def async_set_config(self, sn: str, key: str, value: Any) -> None:
         """Change one setting; `value` must already be in the wire format for `key`."""
         await self._call("/ocpp/api/config", {"chargeId": sn, key: value})
+
+    async def async_set_load_balancing(
+        self, sn: str, enabled: bool, cid: Any, slots: list[dict[str, str]]
+    ) -> None:
+        """Replace the load balancing schedule; `slots` in the format selectLimitPower returns."""
+        payload: dict[str, Any] = {
+            "cmd": "updateLimitPower",
+            "chargeId": sn,
+            "isEnable": "1" if enabled else "0",
+            "config": slots,
+        }
+        if cid is not None:  # Missing until a schedule has been saved once.
+            payload["cid"] = str(cid)
+        await self._call("/ocpp/api/", payload)
 
     async def async_set_charge_mode(
         self, sn: str, connector_id: int, fields: dict[str, Any]

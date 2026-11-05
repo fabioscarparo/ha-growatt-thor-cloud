@@ -18,6 +18,7 @@ from .charge_mode import MODE_PV_LINKAGE
 from .const import ACTIVE_STATES, CONNECTOR_ID, DOMAIN
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, check_owner
+from .load_balancing import in_use as load_balancing_in_use
 from .schedule import (
     BOOST_MODES,
     async_set_boost,
@@ -51,10 +52,7 @@ CONFIG_SWITCHES: tuple[ThorConfigSwitchDescription, ...] = (
         config_key="G_ExternalLimitPowerEnable",
         on_value=1,
         off_value=0,
-        available_fn=lambda c: (
-            c.supports("isSupportLoadBalancing")
-            and c.charge_mode.get("mode") != MODE_PV_LINKAGE
-        ),
+        available_fn=load_balancing_in_use,
     ),
     # Installer setting, disabled by default: unlock the cable at the charger once
     # it is unplugged from the EV.
