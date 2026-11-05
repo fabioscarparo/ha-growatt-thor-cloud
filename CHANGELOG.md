@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+### Fixed
+- *Fast - Start*, *Fast - Start at* and the *Fast - Limit* entities show the next scheduled
+  start, also one made outside Home Assistant: with a start at 22:00 set elsewhere they showed
+  "now" and an unknown time. Values staged in Home Assistant stay until another scheduled
+  start appears.
+
 ## 0.9.0
 ### New
 - *Load balancing limit* (sensor, kW): the household limit that load balancing applies,
