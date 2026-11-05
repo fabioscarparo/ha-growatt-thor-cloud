@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0
+### New
+- *Load balancing limit* (sensor, kW): the household limit that load balancing applies,
+  available while it is on, with the time slots of its schedule (days, from, to, kW) in the
+  `slots` attribute.
+- *General - Load balancing all-day limit* (number, kW): one limit for the whole day, written
+  as a single all-day slot. Setting it replaces any time slots; it shows unknown while there
+  are some.
+- Action `growatt_thor_cloud.set_load_balancing`: replaces the load balancing schedule with up
+  to 10 time slots, each with its days and limit, and turns load balancing on. Slots that
+  overlap, or that start and end at the same time, are refused before anything is sent.
+
 ## 0.8.3
 ### Changed
 - New integration icon in Home Assistant: the wallbox in white on Home Assistant blue.
