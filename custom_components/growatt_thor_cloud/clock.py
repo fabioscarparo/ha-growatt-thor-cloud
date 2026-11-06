@@ -6,7 +6,7 @@ must match Home Assistant's local time.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 import re
 from typing import Any
 
@@ -15,7 +15,16 @@ _ZONE = re.compile(r"^(?:UTC|GMT)\s*(?:([+-])\s*(\d{1,2})(?::?(\d{2}))?)?$", re.
 # Daylight saving start and end as "MM-DD&MM-DD"; "00-00&00-00" when not set.
 _DST = re.compile(r"^(\d{2})-(\d{2})&(\d{2})-(\d{2})$")
 
+# G_DaylightSavingTime without daylight saving.
+NO_DAYLIGHT_SAVING = "00-00&00-00"
+# Days read on each side of today to find a time zone's daylight saving periods.
+_SCAN_DAYS = 400
+
 type MonthDay = tuple[int, int]
+
+
+class ClockError(ValueError):
+    """Home Assistant's time zone cannot be set on the charger."""
 
 
 def time_zone(config: dict[str, Any]) -> str | None:
@@ -74,3 +83,38 @@ def format_offset(offset: timedelta) -> str:
     sign = "-" if minutes < 0 else "+"
     hours, minutes = divmod(abs(minutes), 60)
     return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def _noon_offset(tz: tzinfo, day: date) -> timedelta:
+    """UTC offset of `tz` at noon on `day`, after any daylight saving switch of that day."""
+    return datetime.combine(day, time(12), tzinfo=tz).utcoffset() or timedelta(0)
+
+
+def daylight_saving_for(tz: tzinfo, today: date) -> str:
+    """G_DaylightSavingTime matching `tz`: the period in progress on `today`, else the next.
+
+    The start is the first day on daylight time and the end the first day back on
+    standard time, both read at noon ("03-28&10-31" for Europe/Rome in 2027). Without
+    daylight saving, "00-00&00-00".
+    """
+    days = [today + timedelta(days=n) for n in range(-_SCAN_DAYS, _SCAN_DAYS + 1)]
+    offsets = [_noon_offset(tz, day) for day in days]
+    standard = min(offsets)
+    start: date | None = None
+    for day, offset in zip(days, offsets, strict=True):
+        if offset > standard and start is None:
+            start = day
+        elif offset == standard and start is not None:
+            if day > today:  # Ends after today: in progress or next.
+                return f"{start:%m-%d}&{day:%m-%d}"
+            start = None
+    return NO_DAYLIGHT_SAVING
+
+
+def zone_for(tz: tzinfo, today: date, zones: list[str]) -> str:
+    """The zone of Growatt's list (timeZoneList2) with the standard UTC offset of `tz`."""
+    standard = min(_noon_offset(tz, today + timedelta(days=n)) for n in range(-183, 183))
+    for zone in zones:
+        if base_offset(zone) == standard:
+            return zone
+    raise ClockError(f"No time zone of the charger matches UTC{format_offset(standard)}")

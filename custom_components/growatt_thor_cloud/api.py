@@ -138,6 +138,11 @@ class GrowattThorApi:
         payload = {"sn": sn, "page": 1, "psize": count}
         return (await self._call("/ocpp/api/chargeRecord", payload)).get("data") or []
 
+    async def async_get_time_zones(self) -> list[str]:
+        """Time zones a charger accepts in sysTimeZone ("UTC+1", "UTC+5:30"...), in order."""
+        data = (await self._call("/ocpp/api/timeZoneList2", {})).get("data") or []
+        return [str(entry["zone"]) for entry in data if isinstance(entry, dict) and entry.get("zone")]
+
     async def async_get_load_balancing(self, sn: str) -> dict[str, Any]:
         """Load balancing schedule: isEnable, cid and the time slots with their power limit."""
         payload = {"cmd": "selectLimitPower", "chargeId": sn}

@@ -110,6 +110,9 @@
           "manual": "Manual",
           "smart": "Smart"
         }
+      },
+      "time_zone": {
+        "name": "General - Time zone"
       }
     },
     "sensor": {
@@ -277,6 +280,9 @@
       },
       "warm_up": {
         "name": "General - Warm-up"
+      },
+      "clock_from_ha": {
+        "name": "General - Clock from Home Assistant"
       }
     },
     "time": {
@@ -321,12 +327,32 @@
       "unlock": {
         "name": "Unlock connector"
       }
+    },
+    "text": {
+      "daylight_saving_start": {
+        "name": "General - Daylight saving start"
+      },
+      "daylight_saving_end": {
+        "name": "General - Daylight saving end"
+      }
     }
   },
   "issues": {
     "time_zone_mismatch": {
       "title": "{name}: the charger's clock is off",
-      "description": "The charger keeps time at UTC{charger_offset} (time zone {zone}), while Home Assistant is at UTC{ha_offset}. Off-peak slots, Boost windows and scheduled starts run on the charger's clock, so they would start at the wrong time.\n\nSet the charger's time zone and daylight saving period in its Growatt settings (Basic information). The daylight saving dates cover one year at a time."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Set Home Assistant's clock on the charger",
+            "description": "The charger keeps time at UTC{charger_offset} (time zone {zone}), while Home Assistant is at UTC{ha_offset}. Off-peak slots, Boost windows and scheduled starts run on the charger's clock, so they would start at the wrong time.\n\nSubmit to set the charger to Home Assistant's clock: time zone {new_zone}, daylight saving {new_daylight}. To renew the daylight saving dates every year, turn on General - Clock from Home Assistant."
+          }
+        },
+        "abort": {
+          "not_loaded": "The charger is not loaded: reload the integration and try again.",
+          "no_matching_zone": "None of the time zones the charger accepts matches Home Assistant's. Set the charger's clock with General - Time zone and the daylight saving dates.",
+          "cannot_write": "The Growatt cloud did not accept the change: try again later."
+        }
+      }
     }
   },
   "options": {

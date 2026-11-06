@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
-from homeassistant.const import EntityCategory
+from homeassistant.const import STATE_ON, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .api import GrowattThorError
 from .charge_mode import MODE_PV_LINKAGE
@@ -100,6 +101,7 @@ async def async_setup_entry(
         entities.append(ThorChargingSwitch(coordinator, sn))
         entities.append(ThorBoostSwitch(coordinator, sn))
         entities.append(ThorImportGridSwitch(coordinator, sn))
+        entities.append(ThorClockSyncSwitch(coordinator, sn))
         for description in CONFIG_SWITCHES:
             if description.supported_fn is None or description.supported_fn(charger):
                 entities.append(ThorConfigSwitch(coordinator, sn, description))
@@ -256,3 +258,39 @@ class ThorImportGridSwitch(ThorEntity, SwitchEntity):
             )
         self.async_write_ha_state()
         await self.coordinator.async_refresh_after_write()
+
+
+class ThorClockSyncSwitch(ThorEntity, SwitchEntity, RestoreEntity):
+    """Keep the charger's clock on Home Assistant's: time zone and daylight saving.
+
+    Turning it on sets them right away; while it is on, the coordinator sets them again
+    whenever they differ, which renews the daylight saving dates every year. The choice
+    lives in Home Assistant and survives restarts.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "clock_from_ha")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_state()) and last.state == STATE_ON:
+            self.coordinator.clock_sync.add(self._sn)
+
+    @property
+    def is_on(self) -> bool:
+        return self._sn in self.coordinator.clock_sync
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        check_owner(self.charger)
+        # Stays off when the clock cannot be set.
+        with ha_errors("Could not set the charger's clock"):
+            await self.coordinator.async_align_clock(self._sn)
+        self.coordinator.clock_sync.add(self._sn)
+        # The time zone and daylight saving entities become unavailable.
+        self.coordinator.async_update_listeners()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self.coordinator.clock_sync.discard(self._sn)
+        self.coordinator.async_update_listeners()

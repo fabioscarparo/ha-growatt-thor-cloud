@@ -15,7 +15,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import GrowattThorApi, GrowattThorApiError, GrowattThorAuthError
-from .clock import charger_offset, format_offset, time_zone
+from .clock import (
+    ClockError,
+    charger_offset,
+    daylight_saving_for,
+    format_offset,
+    time_zone,
+    zone_for,
+)
 from .const import (
     ACTIVE_STATES,
     BACKOFF_INTERVALS,
@@ -37,6 +44,9 @@ TIME_ZONE_HELP_URL = "https://github.com/fabioscarparo/ha-growatt-thor-cloud#tim
 SESSIONS_READ = 20
 # A write is confirmed by the charger about a minute later: read the settings again then.
 CONFIRM_DELAY = timedelta(seconds=90)
+# Automatic clock alignment sends the same values again only after this long, in case the
+# charger did not take them.
+CLOCK_RETRY = timedelta(days=1)
 
 type GrowattThorConfigEntry = ConfigEntry[GrowattThorCoordinator]
 
@@ -176,6 +186,12 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self._confirm_at: datetime | None = None
         # Read the reservations on the next update: a write may have changed them.
         self._reservations_stale = False
+        # Time zones the chargers accept (timeZoneList2), read once.
+        self.time_zones: list[str] = []
+        # Chargers whose clock follows Home Assistant's (General - Clock from Home Assistant).
+        self.clock_sync: set[str] = set()
+        # Last automatic alignment per charger: the values sent and when.
+        self._clock_sent: dict[str, tuple[tuple[str, str], datetime]] = {}
 
     @property
     def base_interval(self) -> timedelta:
@@ -223,7 +239,67 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self.update_interval = self._base_interval
         self._last_success = dt_util.utcnow()
         self._check_clocks(chargers)
+        self._keep_clocks_aligned(chargers)
         return chargers
+
+    def clock_target(self) -> tuple[str, str]:
+        """The sysTimeZone and G_DaylightSavingTime that match Home Assistant's clock."""
+        tz = dt_util.get_default_time_zone()
+        today = dt_util.now().date()
+        return zone_for(tz, today, self.time_zones), daylight_saving_for(tz, today)
+
+    async def async_clock_target(self) -> tuple[str, str]:
+        """clock_target, reading the time zone list first if it is not loaded yet."""
+        if not self.time_zones:
+            self.time_zones = await self.api.async_get_time_zones()
+        return self.clock_target()
+
+    async def async_align_clock(self, sn: str) -> None:
+        """Set a charger's time zone and daylight saving to Home Assistant's clock.
+
+        Raises ClockError when no time zone of the charger matches, and
+        GrowattThorApiError when the cloud refuses a write.
+        """
+        target = await self.async_clock_target()
+        charger = self.data[sn]
+        written = False
+        for key, value in zip(("sysTimeZone", "G_DaylightSavingTime"), target, strict=True):
+            if str(charger.config.get(key)) != value:
+                await self.api.async_set_config(sn, key, value)
+                charger.config[key] = value
+                written = True
+        self._clock_sent[sn] = (target, dt_util.utcnow())
+        if written:
+            self.async_update_listeners()
+            await self.async_refresh_after_write()
+
+    def _keep_clocks_aligned(self, chargers: dict[str, ThorCharger]) -> None:
+        """Align the clocks that follow Home Assistant's when they differ from it.
+
+        Runs after every update, so the daylight saving dates move on to the next year
+        once a period is over. Values already sent are sent again only after CLOCK_RETRY.
+        """
+        for sn in self.clock_sync & chargers.keys():
+            try:
+                target = self.clock_target()
+            except ClockError:
+                continue  # Reported when the alignment is turned on.
+            config = chargers[sn].config
+            if (str(config.get("sysTimeZone")), str(config.get("G_DaylightSavingTime"))) == target:
+                continue
+            sent = self._clock_sent.get(sn)
+            if sent and sent[0] == target and dt_util.utcnow() - sent[1] < CLOCK_RETRY:
+                continue
+            self._clock_sent[sn] = (target, dt_util.utcnow())  # One alignment at a time.
+            self.config_entry.async_create_background_task(
+                self.hass, self._async_align_in_background(sn), f"{DOMAIN} clock {sn}"
+            )
+
+    async def _async_align_in_background(self, sn: str) -> None:
+        try:
+            await self.async_align_clock(sn)
+        except (ClockError, GrowattThorApiError) as err:
+            _LOGGER.warning("Could not align the clock of %s with Home Assistant: %s", sn, err)
 
     def _check_clocks(self, chargers: dict[str, ThorCharger]) -> None:
         """Warn in Repairs while a charger's clock differs from Home Assistant's.
@@ -245,7 +321,9 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 self.hass,
                 DOMAIN,
                 issue_id,
-                is_fixable=False,
+                # The fix sets Home Assistant's clock on the charger (repairs.py).
+                is_fixable=True,
+                data={"entry_id": self.config_entry.entry_id, "sn": sn},
                 severity=ir.IssueSeverity.WARNING,
                 learn_more_url=TIME_ZONE_HELP_URL,
                 translation_key="time_zone_mismatch",
@@ -266,6 +344,12 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
             or self._config_fetched_at is None
             or now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL
         )
+        if refresh_config and not self.time_zones:
+            try:
+                self.time_zones = await self.api.async_get_time_zones()
+            except GrowattThorApiError as err:
+                # Only needed to set the time zone: try again with the next settings.
+                _LOGGER.debug("Time zone list not available: %s", err)
         chargers: dict[str, ThorCharger] = {}
         for summary in await self.api.async_get_chargers():
             sn = summary.get("chargeId")

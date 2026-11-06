@@ -19,6 +19,7 @@ from .charge_mode import (
     charge_mode_fields,
     supported_modes,
 )
+from .clock import time_zone
 from .const import CONNECTOR_ID
 from .coordinator import GrowattThorConfigEntry
 from .entity import ThorEntity, check_owner
@@ -109,6 +110,7 @@ async def async_setup_entry(
         entities.extend(
             ThorPlanSelect(coordinator, sn, description) for description in PLAN_SELECTS
         )
+        entities.append(ThorTimeZoneSelect(coordinator, sn))
     async_add_entities(entities)
 
 
@@ -218,3 +220,42 @@ class ThorPlanSelect(ThorEntity, SelectEntity, RestoreEntity):
                 option,
                 self.entity_description.live,
             )
+
+
+class ThorTimeZoneSelect(ThorEntity, SelectEntity):
+    """The charger's time zone (sysTimeZone), among those it accepts (timeZoneList2).
+
+    Unavailable while General - Clock from Home Assistant sets it.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "time_zone")
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._sn not in self.coordinator.clock_sync
+
+    @property
+    def options(self) -> list[str]:
+        zones = list(self.coordinator.time_zones)
+        # The current zone stays selectable even if the list is not loaded or lacks it.
+        if (current := time_zone(self.charger.config)) and current not in zones:
+            zones.append(current)
+        return zones
+
+    @property
+    def current_option(self) -> str | None:
+        return time_zone(self.charger.config)
+
+    async def async_select_option(self, option: str) -> None:
+        """Write the setting, show it right away, then confirm with a refresh."""
+        check_owner(self.charger)
+        try:
+            await self.coordinator.api.async_set_config(self._sn, "sysTimeZone", option)
+        except GrowattThorError as err:
+            raise HomeAssistantError(f"Could not set the time zone: {err}") from err
+        self.charger.config["sysTimeZone"] = option
+        self.async_write_ha_state()
+        await self.coordinator.async_refresh_after_write()

@@ -56,6 +56,8 @@ CONFIG = {
     "isSupportLowRateMode": True,
     "isSupport_LCDEnable": True,
 }
+# Time zones a charger accepts (timeZoneList2 "zone" values), a sample in Growatt's order.
+TIME_ZONES = ["UTC-11", "UTC-5", "UTC", "UTC+1", "UTC+2", "UTC+5:30", "UTC+10"]
 # Load balancing schedule (selectLimitPower): one 5 kW limit for the whole day.
 LOAD_BALANCING = {
     "ctime": 1793817519000,
@@ -127,6 +129,7 @@ def mock_api():
     api.async_get_charge_mode.side_effect = lambda sn, cid: copy.deepcopy(CHARGE_MODE)
     api.async_get_sessions.side_effect = lambda sn, count: []
     api.async_get_load_balancing.side_effect = lambda sn: copy.deepcopy(LOAD_BALANCING)
+    api.async_get_time_zones.side_effect = lambda: list(TIME_ZONES)
     with (
         patch("custom_components.growatt_thor_cloud.GrowattThorApi", return_value=api),
         patch("custom_components.growatt_thor_cloud.config_flow.GrowattThorApi", return_value=api),

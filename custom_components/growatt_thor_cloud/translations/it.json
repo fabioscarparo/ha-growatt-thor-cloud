@@ -110,6 +110,9 @@
           "manual": "Manuale",
           "smart": "Smart"
         }
+      },
+      "time_zone": {
+        "name": "Generale - Fuso orario"
       }
     },
     "sensor": {
@@ -277,6 +280,9 @@
       },
       "warm_up": {
         "name": "Generale - Warm-up"
+      },
+      "clock_from_ha": {
+        "name": "Generale - Orologio da Home Assistant"
       }
     },
     "time": {
@@ -321,12 +327,32 @@
       "unlock": {
         "name": "Sblocca connettore"
       }
+    },
+    "text": {
+      "daylight_saving_start": {
+        "name": "Generale - Inizio ora legale"
+      },
+      "daylight_saving_end": {
+        "name": "Generale - Fine ora legale"
+      }
     }
   },
   "issues": {
     "time_zone_mismatch": {
       "title": "{name}: orologio della wallbox sfasato",
-      "description": "La wallbox segue l'ora UTC{charger_offset} (fuso {zone}), mentre Home Assistant è a UTC{ha_offset}. Fasce Off-peak, finestre Boost e avvii programmati seguono l'orologio della wallbox, quindi partirebbero all'orario sbagliato.\n\nImposta il fuso orario e il periodo dell'ora legale nelle impostazioni Growatt della wallbox (Informazioni di base). Le date dell'ora legale valgono per un anno alla volta."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Imposta sulla wallbox l'orologio di Home Assistant",
+            "description": "La wallbox segue l'ora UTC{charger_offset} (fuso {zone}), mentre Home Assistant è a UTC{ha_offset}. Fasce Off-peak, finestre Boost e avvii programmati seguono l'orologio della wallbox, quindi partirebbero all'orario sbagliato.\n\nConferma per impostare sulla wallbox l'orologio di Home Assistant: fuso {new_zone}, ora legale {new_daylight}. Per rinnovare le date dell'ora legale ogni anno, accendi Generale - Orologio da Home Assistant."
+          }
+        },
+        "abort": {
+          "not_loaded": "La wallbox non è caricata: ricarica l'integrazione e riprova.",
+          "no_matching_zone": "Nessuno dei fusi orari accettati dalla wallbox corrisponde a quello di Home Assistant. Imposta l'orologio della wallbox con Generale - Fuso orario e le date dell'ora legale.",
+          "cannot_write": "Il cloud Growatt non ha accettato la modifica: riprova più tardi."
+        }
+      }
     }
   },
   "options": {

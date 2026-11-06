@@ -88,6 +88,8 @@ Field meanings:
   protected.
 - Clock: `sysTimeZone` (e.g. `UTC+2`, from `timeZoneList2`) plus `G_DaylightSavingTime` =
   `"MM-DD&MM-DD"`, the daylight saving start and end for one year (`00-00&00-00` = not set).
+  `timeZoneList2` entries are `{"zone": "UTC-11:30", "name": "UTC-11.5"}`: `sysTimeZone` takes
+  the `zone`, `name` is a label. The daylight saving start must differ from its end.
   Off-peak slots, Boost windows and scheduled starts run on this clock.
 - `G_NetType` (`wifi` / `cable`), `G_NetworkMode` (`DHCP` / `STATIC`), `G_MaxTemperature`
   (protection temperature, °C), `G_PowerMeterAddr` (meter bus address), `G_RCDProtection`

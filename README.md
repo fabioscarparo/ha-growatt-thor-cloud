@@ -104,9 +104,12 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Fast - Start | select | now / at time / every day |
 | Fast - Start at | time | time of a scheduled start |
 | General - Authorization mode | select | APP/RFID / RFID / Plug & Charge |
+| General - Clock from Home Assistant | switch | off by default; on: keeps the charger's time zone and daylight saving period on Home Assistant's, renewing the daylight saving dates every year |
+| General - Daylight saving start, end | text | `MM-DD`, empty when not set; unavailable while *General - Clock from Home Assistant* is on |
 | General - Load balancing | switch | keeps the home's grid draw under the set limit; unavailable in PV Linkage |
 | General - Load balancing all-day limit | number | kW: one limit for the whole day; setting it replaces any time slots, and it shows unknown while there are some |
 | General - Max current | number | 6-32 A; up to 16 A on 3.6 kW and 11 kW chargers |
+| General - Time zone | select | the charger's time zone, among those Growatt offers; unavailable while *General - Clock from Home Assistant* is on |
 | General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |
 | Off-peak - Slot 1-3 from / to | time | off-peak slots; start = end leaves a slot unused |
 | PV Linkage - Grid import | switch | PV Linkage only: off = PV surplus only, on = the grid tops up the surplus |
@@ -332,11 +335,13 @@ such as UTC+1, plus a daylight saving period set by date for one year at a time.
 zone* sensor shows both. When the charger's clock differs from Home Assistant's, a warning
 appears in *Settings > System > Repairs*, since those times would run early or late.
 
-Set the charger's time zone and daylight saving period in its Growatt settings (*Basic
-information*), and renew the daylight saving dates every year. In central Europe, for
-example: UTC+1 with daylight saving from the last Sunday of March to the last Sunday of
-October (03-29 to 10-25 in 2026). On the charger's own switch days the warning is left as it
-is, since the hour of the switch is not known.
+Turn on *General - Clock from Home Assistant* to keep the charger on Home Assistant's clock:
+it sets the time zone and the daylight saving period, and renews the daylight saving dates
+every year. *Fix* on the Repairs warning sets them once; *General - Time zone* and the
+daylight saving dates set them by hand. In central Europe, for example: UTC+1 with daylight
+saving from the last Sunday of March to the last Sunday of October (03-28 to 10-31 in 2027).
+On the charger's own switch days the warning is left as it is, since the hour of the switch is
+not known.
 
 ## Limitations
 - Data is only as fresh as the Growatt cloud.
