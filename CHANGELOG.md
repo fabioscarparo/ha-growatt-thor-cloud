@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0
+### New
+- *General - Clock from Home Assistant* (switch, off by default): keeps the charger's time
+  zone and daylight saving period on Home Assistant's clock. Turning it on sets them right
+  away; while it is on, the daylight saving dates move to the next period once one is over.
+- *General - Time zone* (select), *General - Daylight saving start* and *end* (text,
+  `MM-DD`): the charger's clock, set by hand. Unavailable while the switch above is on.
+- The Repairs warning about the charger's clock has a *Fix* button: it shows the time zone
+  and daylight saving period of Home Assistant and sets them on the charger once.
+
 ## 0.9.1
 ### Fixed
 - *Fast - Start*, *Fast - Start at* and the *Fast - Limit* entities show the next scheduled
