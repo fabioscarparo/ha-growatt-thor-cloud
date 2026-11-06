@@ -1,0 +1,25 @@
+{
+  "entity": {
+    "select": {
+      "time_zone": {
+        "default": "mdi:map-clock-outline"
+      }
+    },
+    "switch": {
+      "clock_from_ha": {
+        "default": "mdi:clock-check-outline",
+        "state": {
+          "off": "mdi:clock-outline"
+        }
+      }
+    },
+    "text": {
+      "daylight_saving_start": {
+        "default": "mdi:calendar-start-outline"
+      },
+      "daylight_saving_end": {
+        "default": "mdi:calendar-end-outline"
+      }
+    }
+  }
+}
