@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1
+### Changed
+- Icons for *General - Time zone*, *General - Daylight saving start* and *end*, and
+  *General - Clock from Home Assistant*.
+
 ## 0.10.0
 ### New
 - *General - Clock from Home Assistant* (switch, off by default): keeps the charger's time
