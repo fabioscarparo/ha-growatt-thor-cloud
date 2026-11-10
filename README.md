@@ -87,7 +87,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Session - Limit | enum | limit of the current session; value in the `value` attribute |
 | Session - Progress | sensor, % | how much of the session's limit, or of the smart Boost energy, is reached; unknown without one |
 | Status | enum | connector status; a pending scheduled start reads as *Scheduled start* |
-| Tariff | sensor | price of the charger's tariff slot in effect now; unknown if no slot covers now (outside a session) |
+| Tariff | sensor | price of the charger's tariff slot in effect now; unknown if no slot covers now (outside a session); the time slots (from, to, price) in the `slots` attribute |
 
 ### Configuration
 | Entity | Type | Notes |
@@ -103,6 +103,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Fast - Limit cost, duration, energy | number | value of the limit; duration in minutes |
 | Fast - Start | select | now / at time / every day |
 | Fast - Start at | time | time of a scheduled start |
+| General - All-day tariff | number | price per kWh for the whole day, used by Growatt for the session cost; setting it replaces any time slots, and it shows unknown while there are some |
 | General - Authorization mode | select | APP/RFID / RFID / Plug & Charge |
 | General - Clock from Home Assistant | switch | off by default; on: keeps the charger's time zone and daylight saving period on Home Assistant's, renewing the daylight saving dates every year |
 | General - Daylight saving start, end | text | `MM-DD`, empty when not set; unavailable while *General - Clock from Home Assistant* is on |
@@ -228,6 +229,10 @@ dashboard settings.
       - {from: "00:00", to: "06:59", power: 6}
       - {from: "07:00", to: "23:59", power: 3.5, days: [mon, tue, wed, thu, fri]}
   ```
+- `growatt_thor_cloud.set_tariff`: replace the tariff that Growatt uses for the session cost
+  with up to 6 `slots`, each with `from`, `to` (included) and `price` per kWh in the charger's
+  currency, e.g. `{from: "22:00", to: "06:59", price: 0.18}`. Slots must not overlap; a time
+  outside every slot has no price.
 
 ## Wallbox card
 The integration comes with a dashboard card for the charger, drawn with Home Assistant's own

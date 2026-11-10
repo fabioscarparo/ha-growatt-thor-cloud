@@ -1,5 +1,10 @@
 {
   "entity": {
+    "number": {
+      "tariff_all_day": {
+        "default": "mdi:cash-edit"
+      }
+    },
     "select": {
       "time_zone": {
         "default": "mdi:map-clock-outline"

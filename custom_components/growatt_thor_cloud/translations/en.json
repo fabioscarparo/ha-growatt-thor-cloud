@@ -60,6 +60,9 @@
       },
       "load_balancing_all_day": {
         "name": "General - Load balancing all-day limit"
+      },
+      "tariff_all_day": {
+        "name": "General - All-day tariff"
       }
     },
     "select": {
@@ -448,6 +451,20 @@
         "slots": {
           "name": "Slots",
           "description": "Slots with from, to (included) and power in kW, plus days (mon to sun; every day if omitted). Slots must not overlap, whatever their days; 00:00 to 23:59 is the whole day."
+        }
+      }
+    },
+    "set_tariff": {
+      "name": "Set tariff",
+      "description": "Replace the charger's tariff, which Growatt uses for the cost of a session: the price per kWh by time slot, up to 6 slots.",
+      "fields": {
+        "device_id": {
+          "name": "Charger",
+          "description": "The THOR charger."
+        },
+        "slots": {
+          "name": "Slots",
+          "description": "Slots with from, to (included) and price per kWh in the charger's currency. Slots must not overlap; 00:00 to 23:59 is the whole day, and a time outside every slot has no price."
         }
       }
     }

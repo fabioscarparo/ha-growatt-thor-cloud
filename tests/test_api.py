@@ -219,6 +219,22 @@ async def test_unlock_payload(hass, aioclient_mock) -> None:
     }
 
 
+async def test_tariff_payload(hass, aioclient_mock) -> None:
+    """The tariff is replaced with the addPrice command and its priceConf entries."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(f"{DEFAULT_BASE_URL}/ocpp/api/", json={"code": 0, "data": "ok"})
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+
+    await api.async_set_tariff("SN1", [{"time": "00:00-23:59", "price": "0.21", "name": ""}])
+    assert aioclient_mock.mock_calls[-1][2] == {
+        "userId": "SHINEuser",
+        "lan": 1,
+        "cmd": "addPrice",
+        "chargeId": "SN1",
+        "priceConf": [{"time": "00:00-23:59", "price": "0.21", "name": ""}],
+    }
+
+
 async def test_debug_log_masks_credentials(hass, aioclient_mock, caplog) -> None:
     """Requests and replies are logged for debugging, without credentials or the token."""
     caplog.set_level(logging.DEBUG, logger="custom_components.growatt_thor_cloud.api")

@@ -35,6 +35,7 @@ from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
 from .load_balancing import schedule_attributes, turned_on
 from .schedule import LIMIT_TYPES, boost_params, is_boost_on, next_reservation
+from .tariff import tariff_attributes
 
 # G_ExternalSamplingCurWring -> how the charger measures the grid.
 SAMPLING_DEVICES = {"0": "ct2000", "1": "meter", "2": "ct3000"}
@@ -257,10 +258,12 @@ SENSORS: tuple[ThorSensorDescription, ...] = (
         currency_unit="",
         value_fn=lambda c: to_float(c.connector.get("cost")),
     ),
+    # The price in effect now; the tariff's time slots in the attributes (see tariff.py).
     ThorSensorDescription(
         key="tariff",
         currency_unit="/kWh",
         value_fn=_tariff,
+        attrs_fn=tariff_attributes,
     ),
     ThorSensorDescription(
         key="session_limit",

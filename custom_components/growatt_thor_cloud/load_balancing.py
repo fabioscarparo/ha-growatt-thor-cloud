@@ -16,7 +16,7 @@ command and replaced as a whole with `updateLimitPower` (see API_NOTES.md):
 
 - `time`: "HH:MM-HH:MM" on the charger's clock, both ends included. A slot may run
   past midnight ("22:00-06:00"). A limit for the whole day is one slot "00:00-23:59"
-  on every day.
+  on every day. See time_slots.py for how slots are read and compared.
 - `loop`: one flag per weekday, Monday first ("1111100" = Monday to Friday).
 - `power`: the limit in kW, as text ("5", "4.5").
 - `name`: only a label; any text is accepted.
@@ -45,6 +45,7 @@ from datetime import time
 import re
 from typing import Any
 
+from . import time_slots
 from .charge_mode import MODE_PV_LINKAGE, format_kw
 from .coordinator import GrowattThorCoordinator, ThorCharger
 from .entity import check_owner, to_float
@@ -52,7 +53,7 @@ from .entity import check_owner, to_float
 # Weekdays in the order of the `loop` flags, named as in Home Assistant's time conditions.
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # A slot covering the whole day, every day: the schedule of a single all-day limit.
-ALL_DAY = (time(0, 0), time(23, 59))
+ALL_DAY = time_slots.WHOLE_DAY
 MAX_SLOTS = 10
 # Bounds of a limit, kW. Growatt accepts any positive value; Home Assistant's number
 # entity needs bounds, and these leave room for any home connection.
@@ -94,7 +95,7 @@ class Slot:
             "loop": "".join("1" if day in self.days else "0" for day in DAYS),
             "name": name,
             "power": format_kw(self.power),
-            "time": f"{self.start:%H:%M}-{self.end:%H:%M}",
+            "time": time_slots.label(self.start, self.end),
         }
 
     def as_attribute(self) -> dict[str, Any]:
@@ -106,28 +107,16 @@ class Slot:
             "power": self.power,
         }
 
-    def minutes(self) -> set[int]:
-        """The minutes of the day the slot covers, ends included, across midnight if needed."""
-        start = self.start.hour * 60 + self.start.minute
-        end = self.end.hour * 60 + self.end.minute
-        if start <= end:
-            return set(range(start, end + 1))
-        return set(range(start, 24 * 60)) | set(range(end + 1))
-
 
 def read_slots(schedule: dict[str, Any]) -> list[Slot]:
     """The slots of a schedule as Growatt returns it; malformed entries are skipped."""
     slots: list[Slot] = []
     for entry in schedule.get("config") or []:
-        try:
-            start_text, end_text = str(entry["time"]).split("-")
-            start = time.fromisoformat(start_text)
-            end = time.fromisoformat(end_text)
-        except (KeyError, TypeError, ValueError):
-            continue
+        times = time_slots.parse(entry.get("time"))
         power = to_float(entry.get("power"))
-        if power is None:
+        if times is None or power is None:
             continue
+        start, end = times
         loop = str(entry.get("loop") or "")
         days = tuple(day for day, flag in zip(DAYS, loop, strict=False) if flag == "1")
         slots.append(Slot(start, end, power, days))
@@ -167,14 +156,11 @@ def validate(slots: Sequence[Slot]) -> None:
                 f"Slot {number}: the limit must be {MIN_POWER:g} to {MAX_POWER:g} kW"
             )
     # Overlaps count whatever the days: the charger compares the times only.
-    covered = [slot.minutes() for slot in slots]
-    for first in range(len(slots)):
-        for second in range(first + 1, len(slots)):
-            if covered[first] & covered[second]:
-                raise LoadBalancingError(
-                    f"Slots {first + 1} and {second + 1} overlap: slots must not overlap, "
-                    "whatever their days"
-                )
+    if overlap := time_slots.first_overlap([(slot.start, slot.end) for slot in slots]):
+        raise LoadBalancingError(
+            f"Slots {overlap[0]} and {overlap[1]} overlap: slots must not overlap, "
+            "whatever their days"
+        )
 
 
 def _label(schedule: dict[str, Any]) -> str:

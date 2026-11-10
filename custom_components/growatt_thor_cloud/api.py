@@ -170,6 +170,10 @@ class GrowattThorApi:
             payload["cid"] = str(cid)
         await self._call("/ocpp/api/", payload)
 
+    async def async_set_tariff(self, sn: str, price_conf: list[dict[str, str]]) -> None:
+        """Replace the tariff; `price_conf` as priceConf entries ({"time", "price", "name"})."""
+        await self._call("/ocpp/api/", {"cmd": "addPrice", "chargeId": sn, "priceConf": price_conf})
+
     async def async_set_charge_mode(
         self, sn: str, connector_id: int, fields: dict[str, Any]
     ) -> None:

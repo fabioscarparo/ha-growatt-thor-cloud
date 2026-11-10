@@ -44,6 +44,8 @@ from .schedule import (
     effective_plan,
     ha_errors,
 )
+from .tariff import MAX_PRICE, TariffSlot, all_day_price, async_set_tariff
+from .time_slots import WHOLE_DAY
 
 # Upper bound for power settings when the charger does not report its rating.
 DEFAULT_MAX_POWER_KW = 22.0
@@ -200,6 +202,7 @@ async def async_setup_entry(
             ThorPlanNumber(coordinator, sn, description) for description in PLAN_NUMBERS
         )
         entities.append(ThorLoadBalancingNumber(coordinator, sn))
+        entities.append(ThorTariffNumber(coordinator, sn))
     async_add_entities(entities)
 
 
@@ -327,5 +330,41 @@ class ThorLoadBalancingNumber(ThorEntity, NumberEntity):
         with ha_errors("Could not set the load balancing limit"):
             await async_set_slots(self.coordinator, self._sn, [Slot(*ALL_DAY, round(value, 1))])
         # The limit sensor shows the new schedule too.
+        self.coordinator.async_update_listeners()
+        await self.coordinator.async_refresh_after_write()
+
+
+class ThorTariffNumber(ThorEntity, NumberEntity):
+    """One price for the whole day, kept as a single tariff slot from 00:00 to 23:59.
+
+    Shows the price while the tariff is a single slot covering the whole day, and unknown
+    while it has several slots; setting a value replaces them (see tariff.py).
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_min_value = 0
+    _attr_native_max_value = MAX_PRICE
+    _attr_native_step = 0.001
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator, sn: str) -> None:
+        super().__init__(coordinator, sn, "tariff_all_day")
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        # Per kWh in the charger's currency, like the "Tariff" sensor.
+        currency = self.charger.config.get("unit") or self.charger.summary.get("unit")
+        return f"{currency}/kWh" if currency else None
+
+    @property
+    def native_value(self) -> float | None:
+        return all_day_price(self.charger)
+
+    async def async_set_native_value(self, value: float) -> None:
+        with ha_errors("Could not set the tariff"):
+            await async_set_tariff(
+                self.coordinator, self._sn, [TariffSlot(*WHOLE_DAY, round(value, 4))]
+            )
+        # The "Tariff" sensor shows the new price too.
         self.coordinator.async_update_listeners()
         await self.coordinator.async_refresh_after_write()

@@ -103,7 +103,10 @@ Field meanings:
   is unplugged from the EV, `"false"` = it stays locked (sent as string).
 - Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,
   one entry per time slot; slots may wrap past midnight. Set with `POST /ocpp/api/`
-  `{"cmd":"addPrice","chargeId","priceConf":[{"time","price","name":""}],"userId","lan"}`.
+  `{"cmd":"addPrice","chargeId","priceConf":[{"time","price","name":""}],"userId","lan"}`, which
+  replaces the whole tariff. Growatt's own tariff editor allows 1 to 6 slots, each with a start
+  different from its end and both ends included, none overlapping; the slots need not cover the
+  whole day. `price` is text, per kWh in the charger's currency; `name` is sent empty.
 - `G_ChargerMode` (authorization): 1 = APP/RFID, 2 = RFID, 3 = Plug&Charge (sent as int).
   In RFID mode sessions start and stop with a card, not remotely.
 - `G_SolarMode`: 0 = FAST, 1 = ECO (PV surplus + grid import set by `G_SolarLimitPower`),

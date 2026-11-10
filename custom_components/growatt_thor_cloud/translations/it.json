@@ -60,6 +60,9 @@
       },
       "load_balancing_all_day": {
         "name": "Generale - Limite bilanciamento carico tutto il giorno"
+      },
+      "tariff_all_day": {
+        "name": "Generale - Tariffa tutto il giorno"
       }
     },
     "select": {
@@ -448,6 +451,20 @@
         "slots": {
           "name": "Fasce",
           "description": "Fasce con from, to (compreso) e power in kW, più days (da mon a sun; tutti i giorni se omesso). Le fasce non si devono sovrapporre, qualunque siano i giorni; dalle 00:00 alle 23:59 è tutto il giorno."
+        }
+      }
+    },
+    "set_tariff": {
+      "name": "Imposta la tariffa",
+      "description": "Sostituisce la tariffa della wallbox, che Growatt usa per il costo di una sessione: il prezzo al kWh per fascia oraria, fino a 6 fasce.",
+      "fields": {
+        "device_id": {
+          "name": "Wallbox",
+          "description": "La wallbox THOR."
+        },
+        "slots": {
+          "name": "Fasce",
+          "description": "Fasce con from, to (compreso) e price al kWh nella valuta della wallbox. Le fasce non si devono sovrapporre; dalle 00:00 alle 23:59 è tutto il giorno, e un orario fuori da ogni fascia non ha prezzo."
         }
       }
     }

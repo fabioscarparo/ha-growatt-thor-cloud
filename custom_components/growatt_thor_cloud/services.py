@@ -1,4 +1,4 @@
-"""Actions: scheduled start, reservation cancel, Boost and load balancing.
+"""Actions: scheduled start, reservation cancel, Boost, load balancing and tariff.
 
 They go through the same helpers as the dashboard entities; values passed to
 an action are used as given, without touching the staged plan (except Boost,
@@ -26,6 +26,7 @@ from .schedule import (
     effective_plan,
     ha_errors,
 )
+from .tariff import MAX_PRICE, TariffSlot, async_set_tariff
 
 ATTR_DEVICE_ID = "device_id"
 POSITIVE = vol.All(vol.Coerce(float), vol.Range(min=0, min_included=False))
@@ -66,6 +67,20 @@ LOAD_BALANCING_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_DEVICE_ID): cv.string,
         vol.Required("slots"): vol.All(cv.ensure_list, [SLOT_SCHEMA]),
+    }
+)
+# One tariff slot: price per kWh in the charger's currency; the end is included.
+TARIFF_SLOT_SCHEMA = vol.Schema(
+    {
+        vol.Required("from"): cv.time,
+        vol.Required("to"): cv.time,
+        vol.Required("price"): vol.All(vol.Coerce(float), vol.Range(min=0, max=MAX_PRICE)),
+    }
+)
+TARIFF_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required("slots"): vol.All(cv.ensure_list, [TARIFF_SLOT_SCHEMA]),
     }
 )
 # Boost action field -> ChargePlan field.
@@ -158,6 +173,24 @@ async def _async_load_balancing(call: ServiceCall) -> None:
     await coordinator.async_refresh_after_write()
 
 
+async def _async_tariff(call: ServiceCall) -> None:
+    coordinator, sn = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
+    slots = [
+        TariffSlot(
+            # Growatt works in whole minutes.
+            slot["from"].replace(second=0, microsecond=0),
+            slot["to"].replace(second=0, microsecond=0),
+            slot["price"],
+        )
+        for slot in call.data["slots"]
+    ]
+    with ha_errors("Could not set the tariff"):
+        await async_set_tariff(coordinator, sn, slots)
+    # The "Tariff" sensor and the all-day tariff show the new slots.
+    coordinator.async_update_listeners()
+    await coordinator.async_refresh_after_write()
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the integration's actions (once, for all config entries)."""
@@ -169,3 +202,4 @@ def async_setup_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "set_load_balancing", _async_load_balancing, schema=LOAD_BALANCING_SCHEMA
     )
+    hass.services.async_register(DOMAIN, "set_tariff", _async_tariff, schema=TARIFF_SCHEMA)

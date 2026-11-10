@@ -99,3 +99,22 @@ set_load_balancing:
           days: [mon, tue, wed, thu, fri]
       selector:
         object:
+
+set_tariff:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: growatt_thor_cloud
+    slots:
+      required: true
+      example: |
+        - from: "00:00"
+          to: "07:59"
+          price: 0.18
+        - from: "08:00"
+          to: "23:59"
+          price: 0.25
+      selector:
+        object:
