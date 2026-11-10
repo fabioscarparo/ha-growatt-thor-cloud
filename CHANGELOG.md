@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0
+### New
+- Wallbox card: in Fast, outside a session, *Scheduled start* opens a dialog to start
+  charging now or at a time (once or every day), with an energy, cost or duration limit.
+  With a scheduled start it opens on that one, and saving replaces it.
+- *General - All-day tariff* (number): the price per kWh for the whole day, which Growatt
+  uses for the session cost, written as a single slot. Setting it replaces any time slots;
+  it shows unknown while there are some.
+- Action `growatt_thor_cloud.set_tariff`: replaces the tariff with up to 6 time slots, each
+  with its price. Slots that overlap, or that start and end at the same time, are refused
+  before anything is sent.
+- *Tariff* sensor: the time slots of the tariff (from, to, price) in the `slots` attribute.
+
 ## 0.10.1
 ### Changed
 - Icons for *General - Time zone*, *General - Daylight saving start* and *end*, and

@@ -1074,7 +1074,7 @@ var J=globalThis,C1=J.ShadowRoot&&(J.ShadyCSS===void 0||J.ShadyCSS.nativeShadow)
               </option>`)}
         </select>
       </div>
-    `}async _call(C,V,M,r={}){try{await this.hass.callService(C,V,{entity_id:M,...r})}catch(e){let t=e?.message??String(e);this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:t},bubbles:!0,composed:!0}))}}};X.styles=N2,X.properties={hass:{attribute:!1},_config:{state:!0},_links:{state:!0},_booking:{state:!0}};_("thor-wallbox-card",X);var G2=window.customCards??=[];G2.some(L=>L.type==="thor-wallbox-card")||G2.push({type:"thor-wallbox-card",name:u(void 0,"card_name"),description:u(void 0,"card_description"),preview:!0,documentationURL:"https://github.com/fabioscarparo/ha-growatt-thor-cloud#wallbox-card"});console.info("%c THOR-WALLBOX-CARD %c 0.10.1 ","color: #fff; background: #43a047","");
+    `}async _call(C,V,M,r={}){try{await this.hass.callService(C,V,{entity_id:M,...r})}catch(e){let t=e?.message??String(e);this.dispatchEvent(new CustomEvent("hass-notification",{detail:{message:t},bubbles:!0,composed:!0}))}}};X.styles=N2,X.properties={hass:{attribute:!1},_config:{state:!0},_links:{state:!0},_booking:{state:!0}};_("thor-wallbox-card",X);var G2=window.customCards??=[];G2.some(L=>L.type==="thor-wallbox-card")||G2.push({type:"thor-wallbox-card",name:u(void 0,"card_name"),description:u(void 0,"card_description"),preview:!0,documentationURL:"https://github.com/fabioscarparo/ha-growatt-thor-cloud#wallbox-card"});console.info("%c THOR-WALLBOX-CARD %c 0.11.0 ","color: #fff; background: #43a047","");
 /*! Bundled license information:
 
 @lit/reactive-element/css-tag.js:
