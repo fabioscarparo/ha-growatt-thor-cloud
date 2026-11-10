@@ -11,6 +11,7 @@ import {
   mdiBatteryOutline,
   mdiCalendarClock,
   mdiCalendarRemove,
+  mdiChevronRight,
   mdiCloudOffOutline,
   mdiCreditCardWirelessOutline,
   mdiCurrencyEur,
@@ -30,6 +31,8 @@ import {
   mdiTransmissionTower,
   mdiWeatherNight,
 } from "@mdi/js";
+import "./booking-dialog";
+import { type BookingForm, initialForm, limitText, reservationDefaults } from "./booking";
 import "./editor";
 import { ACTIVE_STATES, SESSION_STATES, findDevices, resolveEntities } from "./entities";
 import { computeFlow, type Flow } from "./flow";
@@ -135,11 +138,15 @@ class ThorWallboxCard extends LitElement {
     hass: { attribute: false },
     _config: { state: true },
     _links: { state: true },
+    _booking: { state: true },
   };
 
   declare hass?: HomeAssistant;
   declare _config?: WallboxCardConfig;
   declare _links?: BatteryLinks;
+  // The booking dialog, while it is open: the form it opened with, and whether it replaces
+  // a scheduled start (see booking-dialog.ts).
+  declare _booking?: { form: BookingForm; replaces: boolean };
 
   // Draws the battery's links again when the flow changes size.
   private _resizeObserver?: ResizeObserver;
@@ -309,6 +316,17 @@ class ThorWallboxCard extends LitElement {
         ${offline ? nothing : this._renderFlow(status, mode, power ?? 0)}
         ${this._renderBadges(status, mode, inSession)}
         ${this._renderFeatures(status, inSession)}
+        ${this._booking
+          ? html`<thor-wallbox-booking
+              .hass=${this.hass}
+              .deviceId=${this._config.device_id}
+              .form=${this._booking.form}
+              .currency=${this._currency()}
+              .rfid=${this._rfid()}
+              .replaces=${this._booking.replaces}
+              @closed=${this._bookingClosed}
+            ></thor-wallbox-booking>`
+          : nothing}
       </ha-card>
     `;
   }
@@ -735,7 +753,9 @@ class ThorWallboxCard extends LitElement {
         badges.push({ icon: mdiWeatherNight, color: OFF_PEAK_COLOR, label: this._t("slots"), text: slots.join(", ") });
       }
     }
-    const reservation = status === "reserved" ? undefined : this._reservation();
+    // A pending start is in the status line, and the schedule row shows it where there is one.
+    const reservation =
+      status === "reserved" || this._canSchedule(status, mode, inSession) ? undefined : this._reservation();
     if (reservation) {
       badges.push({
         icon: mdiCalendarClock,
@@ -849,13 +869,15 @@ class ThorWallboxCard extends LitElement {
   }
 
   /**
-   * Start or stop, unlock and the charge mode, following the integration's rules:
-   * no remote start or stop in RFID mode, no mode change while a session is open,
+   * Start or stop, unlock, the scheduled start and the charge mode, following the
+   * integration's rules: no remote start or stop in RFID mode, starts with a time or a
+   * limit in Fast only and outside a session, no mode change while a session is open,
    * nothing while the wallbox is unreachable.
    */
   private _renderControls(status: string, inSession: boolean) {
     const offline = status === "unavailable";
-    const rfid = this._state("select.authorization_mode") === "rfid";
+    const rfid = this._rfid();
+    const mode = this._state("select.charge_mode");
     const chargingId = this._id("switch.charging");
     const cancelId = this._id("button.cancel_reservation");
     const unlockId = this._id("button.unlock");
@@ -895,7 +917,8 @@ class ThorWallboxCard extends LitElement {
       });
     }
     const modeObj = this._obj("select.charge_mode");
-    if (!buttons.length && !modeObj) {
+    const schedule = this._canSchedule(status, mode, inSession);
+    if (!buttons.length && !modeObj && !schedule) {
       return nothing;
     }
     return html`
@@ -911,10 +934,83 @@ class ThorWallboxCard extends LitElement {
             )}
           </div>`
         : nothing}
+      ${schedule ? this._renderSchedule() : nothing}
       ${modeObj ? this._renderModeSelect(modeObj, inSession || offline) : nothing}
       ${inSession ? html`<p class="note">${this._t("locked_note")}</p>` : nothing}
     `;
   }
+
+  private _rfid(): boolean {
+    return this._state("select.authorization_mode") === "rfid";
+  }
+
+  /** The unit of the cost limit, as the integration reports it (e.g. "EUR"). */
+  private _currency(): string | undefined {
+    return (
+      this._obj("number.limit_cost")?.attributes.unit_of_measurement ??
+      this._obj("sensor.session_cost")?.attributes.unit_of_measurement
+    );
+  }
+
+  /**
+   * Whether the card offers the booking dialog: in Fast, outside a session, with the
+   * wallbox reachable, as the integration's start_charging action requires.
+   */
+  private _canSchedule(status: string, mode: string | undefined, inSession: boolean): boolean {
+    return (
+      this._config!.show_controls !== false && mode === "fast" && !inSession && status !== "unavailable"
+    );
+  }
+
+  /** The row that opens the booking dialog, with the scheduled start if there is one. */
+  private _renderSchedule(): TemplateResult {
+    const hass = this.hass!;
+    const reservation = this._reservation();
+    let text = this._t("schedule");
+    if (reservation) {
+      const attributes = this._obj("sensor.next_reservation")?.attributes ?? {};
+      const limit =
+        typeof attributes.limit === "string" && typeof attributes.limit_value === "number"
+          ? limitText(hass, attributes.limit, attributes.limit_value, this._currency())
+          : "";
+      text = [reservation, limit].filter(Boolean).join(" · ");
+    }
+    return html`
+      <button class="select schedule" type="button" @click=${this._openBooking}>
+        ${icon(mdiCalendarClock, 20)}
+        <div class="content">
+          <span class="label">${this._t("scheduled_start")}</span>
+          <span class="current">${text}</span>
+        </div>
+        ${icon(mdiChevronRight, 20)}
+      </button>
+    `;
+  }
+
+  /**
+   * Open the booking dialog. It starts from the scheduled start, so that it edits it,
+   * or else from the integration's Fast entities (start, time, limit and its values).
+   */
+  private _openBooking = (): void => {
+    const next = this._obj("sensor.next_reservation");
+    const reservation =
+      next && hasValue(next.state)
+        ? reservationDefaults(next.state, next.attributes, this.hass!.config?.time_zone)
+        : undefined;
+    const defaults = reservation ?? {
+      start: this._state("select.start_mode"),
+      time: formatClock(this._state("time.start_time")),
+      limit: this._state("select.charge_limit"),
+      energy: numericState(this._obj("number.limit_energy")),
+      cost: numericState(this._obj("number.limit_cost")),
+      duration: numericState(this._obj("number.limit_duration")),
+    };
+    this._booking = { form: initialForm(defaults, this._rfid()), replaces: reservation !== undefined };
+  };
+
+  private _bookingClosed = (): void => {
+    this._booking = undefined;
+  };
 
   private _renderModeSelect(modeObj: HassEntity, locked: boolean): TemplateResult {
     const hass = this.hass!;

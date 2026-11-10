@@ -32,7 +32,10 @@ export interface HomeAssistant {
   devices: Record<string, DeviceRegistryEntry>;
   language: string;
   locale: FrontendLocale;
-  themes?: unknown;
+  // Home Assistant's own time zone, e.g. "Europe/Rome": the integration reads start
+  // times in it.
+  config?: { time_zone?: string };
+  themes?: { darkMode?: boolean };
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<unknown>;
   formatEntityState(stateObj: HassEntity, state?: string): string;
 }

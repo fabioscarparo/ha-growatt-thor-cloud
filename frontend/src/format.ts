@@ -24,6 +24,30 @@ export function formatNumber(hass: HomeAssistant, value: number, digits: number)
   }).format(value);
 }
 
+/** A number with up to `digits` decimals and no trailing zeros, e.g. "20" or "7,5". */
+export function formatAmount(hass: HomeAssistant, value: number, digits: number): string {
+  return new Intl.NumberFormat(numberLocale(hass), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+    useGrouping: hass.locale?.number_format !== "none",
+  }).format(value);
+}
+
+/**
+ * An amount of money: "5,00 €" when `currency` is an ISO 4217 code such as "EUR",
+ * otherwise the number with two decimals followed by `currency` as it is.
+ */
+export function formatMoney(hass: HomeAssistant, value: number, currency?: string): string {
+  if (currency && /^[A-Z]{3}$/.test(currency)) {
+    try {
+      return new Intl.NumberFormat(numberLocale(hass), { style: "currency", currency }).format(value);
+    } catch {
+      // Not a currency Intl knows: written out below.
+    }
+  }
+  return `${formatNumber(hass, value, 2)}${currency ? ` ${currency}` : ""}`;
+}
+
 /** Watts as kW with one decimal, e.g. "7,2 kW". */
 export function formatKw(hass: HomeAssistant, watts: number): string {
   return `${formatNumber(hass, watts / 1000, 1)} kW`;

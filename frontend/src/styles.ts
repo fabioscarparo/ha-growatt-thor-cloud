@@ -507,6 +507,30 @@ export const cardStyles = css`
   .select select:disabled {
     cursor: not-allowed;
   }
+  /* The scheduled start row: a button that looks like the select rows and opens the
+     booking dialog. */
+  button.select {
+    width: 100%;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: inherit;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+  }
+  button.select:focus-visible {
+    box-shadow: 0 0 0 2px var(--tile-color);
+  }
+  /* A tap focuses the button too: the ring is only for the keyboard. */
+  button.select:focus:not(:focus-visible) {
+    box-shadow: none;
+  }
+  .select.schedule .current {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .features .note {
     padding: 0 4px;
   }

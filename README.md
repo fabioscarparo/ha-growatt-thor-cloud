@@ -236,9 +236,9 @@ dashboard settings.
 
 ## Wallbox card
 The integration comes with a dashboard card for the charger, drawn with Home Assistant's own
-elements and theme colors: status, charging power, the session, alerts, start and stop, unlock
-and the charge mode. It is loaded automatically, with no resource to add, and it updates with
-the integration.
+elements and theme colors: status, charging power, the session, alerts, start and stop, unlock,
+scheduled charging and the charge mode. It is loaded automatically, with no resource to add, and
+it updates with the integration.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/card/wall-dark.svg">
@@ -274,7 +274,10 @@ it feeds the car. While the car charges, the card splits the charging power betw
 battery and grid, after the rest of the home has taken its share.
 
 The controls follow the integration's rules: no remote start or stop in RFID mode, no charge
-mode change while a session is open, and unlock only when the charger allows it.
+mode change while a session is open, and unlock only when the charger allows it. In Fast, outside
+a session, *Scheduled start* opens a dialog that starts charging now or at a time (once or every
+day), with an energy, cost or duration limit; with a scheduled start it opens on that one, and
+saving replaces it.
 
 Please report problems and ideas in the
 [issues](https://github.com/fabioscarparo/ha-growatt-thor-cloud/issues).
