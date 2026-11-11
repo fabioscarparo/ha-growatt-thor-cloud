@@ -162,7 +162,8 @@ Field meanings:
   `expiryDate` = `"YYYY-MM-DDTHH:MM:00.000Z"` in local time (the `Z` is literal, not UTC),
   `loopType` 0 = every day, -1 = once, `loopValue` = `"HH:MM"`. The integration uses the next
   occurrence of the time (tomorrow if already passed today). One scheduled start per account
-  at a time.
+  at a time: a new `ReserveNow` replaces the pending one, which is how a scheduled start is
+  changed.
 - Reservations: `/ocpp/api/ReserveNow` returns `data[]` with `reservationId`, `expiryDate`,
   `loopType`, `loopValue`, `cKey`, `cValue`, `cValue2` (value to display), `connectorId`,
   `status`, `rate`, `cost`.
