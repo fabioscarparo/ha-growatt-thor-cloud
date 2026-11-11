@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1
+### Changed
+- hacs.json: no `render_readme`, which HACS no longer reads.
+
 ## 0.11.0
 ### New
 - Wallbox card: in Fast, outside a session, *Scheduled start* opens a dialog to start
