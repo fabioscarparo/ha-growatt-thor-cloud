@@ -17,7 +17,7 @@
 <p align="center">
   <a href="https://github.com/fabioscarparo/ha-growatt-thor-cloud/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/fabioscarparo/ha-growatt-thor-cloud?label=Release&color=5CC300"></a>
   <a href="https://github.com/fabioscarparo/ha-growatt-thor-cloud/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/fabioscarparo/ha-growatt-thor-cloud/ci.yml?branch=main&label=CI"></a>
-  <a href="https://hacs.xyz/"><img alt="HACS Custom" src="https://img.shields.io/badge/HACS-Custom-41BDF5?logo=homeassistantcommunitystore&logoColor=fff"></a>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=fabioscarparo&repository=ha-growatt-thor-cloud&category=integration"><img alt="HACS Default" src="https://img.shields.io/badge/HACS-Default-41BDF5?logo=homeassistantcommunitystore&logoColor=fff"></a>
   <a href="https://www.home-assistant.io/"><img alt="Home Assistant 2025.3+" src="https://img.shields.io/badge/Home_Assistant-2025.3%2B-18BCF2?logo=homeassistant&logoColor=fff"></a>
   <a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=fff"></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/License-MIT-333"></a>
@@ -39,18 +39,25 @@ Requires Home Assistant 2025.3 or newer; the integration's icon shows from Home 
 ## Installation
 
 ### HACS (recommended)
-1. In HACS open the menu (three dots, top right) > *Custom repositories*.
-2. Add `https://github.com/fabioscarparo/ha-growatt-thor-cloud` with type *Integration*.
-3. Search for **Growatt THOR EV Charger (Cloud)**, download it and restart Home Assistant.
+The integration is in HACS's default store, with no custom repository to add:
+
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=fabioscarparo&repository=ha-growatt-thor-cloud&category=integration)
+
+1. Open the repository in HACS with the button above, or search HACS for
+   **Growatt THOR EV Charger (Cloud)**.
+2. Download it and restart Home Assistant.
 
 ### Manual
 Copy `custom_components/growatt_thor_cloud` into your Home Assistant
 `config/custom_components/` folder and restart Home Assistant.
 
 ### Setup
-Add **Growatt THOR EV Charger (Cloud)** from *Settings > Devices & services > Add integration*
-using your Growatt account username and password. Only the Growatt password hash is stored.
-*Configure* on the integration sets the polling interval (see *Polling and rate limits*).
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=growatt_thor_cloud)
+
+Add **Growatt THOR EV Charger (Cloud)** with the button above, or from *Settings > Devices &
+services > Add integration*, using your Growatt account username and password. Only the
+Growatt password hash is stored. *Configure* on the integration sets the polling interval (see
+*Polling and rate limits*).
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
