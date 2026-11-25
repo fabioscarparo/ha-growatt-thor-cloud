@@ -448,7 +448,9 @@ class ThorSensor(ThorEntity, SensorEntity):
         suffix = self.entity_description.currency_unit
         if suffix is None:
             return super().native_unit_of_measurement
-        currency = self.charger.config.get("unit") or self.charger.summary.get("unit")
+        if (charger := self.charger_or_none) is None:
+            return None
+        currency = charger.config.get("unit") or charger.summary.get("unit")
         return f"{currency}{suffix}" if currency else None
 
 
@@ -535,9 +537,8 @@ class ThorTodayEnergySensor(ThorEntity, SensorEntity, RestoreEntity):
         return dt_util.start_of_local_day(self._data.day) if self._data.day else None
 
     def _count(self) -> None:
-        if self._sn not in self.coordinator.data:
+        if (charger := self.charger_or_none) is None:
             return
-        charger = self.charger
         data = self._data
         today = dt_util.now().date()
         if data.day != today:

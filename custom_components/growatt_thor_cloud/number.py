@@ -279,7 +279,9 @@ class ThorPlanNumber(ThorEntity, NumberEntity, RestoreEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         if self.entity_description.currency:
-            return self.charger.config.get("unit") or self.charger.summary.get("unit")
+            if (charger := self.charger_or_none) is None:
+                return None
+            return charger.config.get("unit") or charger.summary.get("unit")
         return super().native_unit_of_measurement
 
     @property
@@ -353,7 +355,9 @@ class ThorTariffNumber(ThorEntity, NumberEntity):
     @property
     def native_unit_of_measurement(self) -> str | None:
         # Per kWh in the charger's currency, like the "Tariff" sensor.
-        currency = self.charger.config.get("unit") or self.charger.summary.get("unit")
+        if (charger := self.charger_or_none) is None:
+            return None
+        currency = charger.config.get("unit") or charger.summary.get("unit")
         return f"{currency}/kWh" if currency else None
 
     @property

@@ -195,7 +195,7 @@ def effective_plan(coordinator: GrowattThorCoordinator, sn: str) -> ChargePlan:
     charger actually does.
     """
     plan = coordinator.plan(sn)
-    charger = coordinator.data.get(sn)
+    charger = (coordinator.data or {}).get(sn)
     if charger is None:
         return plan
     _sync_start(plan, charger)

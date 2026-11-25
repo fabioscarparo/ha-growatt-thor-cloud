@@ -165,3 +165,24 @@ async def test_written_setting_kept_until_confirmed(
     freezer.tick(timedelta(seconds=120))
     await coordinator.async_refresh()
     assert state(hass, "switch", "warm_up").state == "off"
+
+
+async def test_removed_charger_turns_unavailable_without_errors(
+    hass: HomeAssistant, mock_api
+) -> None:
+    """A charger disappearing from /ocpp/api/list turns all its entities unavailable cleanly."""
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    mock_api.async_get_chargers.return_value = []
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    for domain, key in (
+        ("sensor", "status"),
+        ("sensor", "session_cost"),
+        ("number", "limit_cost"),
+        ("number", "tariff_all_day"),
+        ("select", "charge_mode"),
+        ("select", "time_zone"),
+    ):
+        assert state(hass, domain, key).state == "unavailable"

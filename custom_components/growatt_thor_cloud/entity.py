@@ -45,9 +45,14 @@ class ThorEntity(CoordinatorEntity[GrowattThorCoordinator]):
         return self.coordinator.data[self._sn]
 
     @property
+    def charger_or_none(self) -> ThorCharger | None:
+        """Latest snapshot of this entity's charger, or None once removed."""
+        return (self.coordinator.data or {}).get(self._sn)
+
+    @property
     def available(self) -> bool:
         # A charger removed from the account disappears from the next poll.
-        return super().available and self._sn in self.coordinator.data
+        return super().available and self.charger_or_none is not None
 
 
 def check_owner(charger: ThorCharger) -> None:

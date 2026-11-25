@@ -126,8 +126,10 @@ class ThorChargeModeSelect(ThorEntity, SelectEntity):
 
     @property
     def options(self) -> list[str]:
-        modes = supported_modes(self.charger)
-        current = self.charger.charge_mode.get("mode")
+        if (charger := self.charger_or_none) is None:
+            return list(CHARGE_MODES)
+        modes = supported_modes(charger)
+        current = charger.charge_mode.get("mode")
         return [opt for opt, mode in CHARGE_MODES.items() if mode in modes or mode == current]
 
     @property
@@ -241,7 +243,11 @@ class ThorTimeZoneSelect(ThorEntity, SelectEntity):
     def options(self) -> list[str]:
         zones = list(self.coordinator.time_zones)
         # The current zone stays selectable even if the list is not loaded or lacks it.
-        if (current := time_zone(self.charger.config)) and current not in zones:
+        if (
+            (charger := self.charger_or_none) is not None
+            and (current := time_zone(charger.config))
+            and current not in zones
+        ):
             zones.append(current)
         return zones
 
