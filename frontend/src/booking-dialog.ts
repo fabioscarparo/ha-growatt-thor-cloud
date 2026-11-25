@@ -185,16 +185,33 @@ class ThorWallboxBooking extends LitElement {
     selected: T,
     choose: (option: T) => void,
   ): TemplateResult {
+    const onKeydown = (ev: KeyboardEvent, index: number): void => {
+      let step = 0;
+      if (ev.key === "ArrowRight" || ev.key === "ArrowDown") {
+        step = 1;
+      } else if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") {
+        step = -1;
+      } else {
+        return;
+      }
+      ev.preventDefault();
+      const next = (index + step + options.length) % options.length;
+      choose(options[next]);
+      const group = (ev.currentTarget as HTMLElement).parentElement;
+      group?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus();
+    };
     return html`
       <div class="segmented" role="radiogroup" aria-labelledby=${labelledBy}>
         ${options.map(
-          (option) => html`
+          (option, index) => html`
             <button
               class="option ${option === selected ? "selected" : ""}"
               type="button"
               role="radio"
+              tabindex=${option === selected ? "0" : "-1"}
               aria-checked=${option === selected ? "true" : "false"}
               @click=${() => choose(option)}
+              @keydown=${(ev: KeyboardEvent) => onKeydown(ev, index)}
             >
               <span>${this._t(labels[option])}</span>
             </button>

@@ -70,13 +70,39 @@ export function formatClock(state?: string): string | undefined {
   return match ? `${match[1]}:${match[2]}` : undefined;
 }
 
-/** A date as "18 lug" (or the time, when it is today). */
-export function formatShortDate(hass: HomeAssistant, date: Date): string {
+/** Format a Date with `options` in Home Assistant's time zone, falling back to browser time. */
+function formatInZone(hass: HomeAssistant, date: Date, options: Intl.DateTimeFormatOptions): string {
   const language = hass.locale?.language || hass.language;
-  if (date.toDateString() === new Date().toDateString()) {
-    return new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit" }).format(date);
+  const timeZone = hass.config?.time_zone;
+  try {
+    return new Intl.DateTimeFormat(language, { ...options, timeZone }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(language, options).format(date);
   }
-  return new Intl.DateTimeFormat(language, { day: "numeric", month: "short" }).format(date);
+}
+
+/** Calendar day ("YYYY-MM-DD") of `date` in `timeZone`, or browser time when invalid. */
+function dayKey(date: Date, timeZone?: string): string {
+  const options: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
+  try {
+    return new Intl.DateTimeFormat("en-CA", { ...options, timeZone }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", options).format(date);
+  }
+}
+
+/** A Date's time ("22:00" / "10:00 PM") on Home Assistant's clock. */
+export function formatTimeInZone(hass: HomeAssistant, date: Date): string {
+  return formatInZone(hass, date, { hour: "2-digit", minute: "2-digit" });
+}
+
+/** A date as "18 lug" (or the time, when it is today on Home Assistant's clock). */
+export function formatShortDate(hass: HomeAssistant, date: Date, now: Date = new Date()): string {
+  const timeZone = hass.config?.time_zone;
+  if (dayKey(date, timeZone) === dayKey(now, timeZone)) {
+    return formatTimeInZone(hass, date);
+  }
+  return formatInZone(hass, date, { day: "numeric", month: "short" });
 }
 
 /** A power sensor's state in W, whatever its unit; undefined when unknown. */

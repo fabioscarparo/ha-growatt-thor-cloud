@@ -11,10 +11,13 @@ import {
   mdiBatteryOutline,
   mdiCalendarClock,
   mdiCalendarRemove,
+  mdiCash,
   mdiChevronRight,
   mdiCloudOffOutline,
   mdiCreditCardWirelessOutline,
   mdiCurrencyEur,
+  mdiCurrencyGbp,
+  mdiCurrencyUsd,
   mdiEvStation,
   mdiFlash,
   mdiHistory,
@@ -42,6 +45,7 @@ import {
   formatMinutes,
   formatNumber,
   formatShortDate,
+  formatTimeInZone,
   numericState,
   powerInWatts,
 } from "./format";
@@ -78,17 +82,32 @@ const MODES: Record<string, { icon: string; color: string }> = {
 const EMPTY_STATES = ["", "unknown", "unavailable", "NoError"];
 // Below this, in W, a source is not feeding the wallbox.
 const MIN_FLOW = 50;
-// A flow's dot crosses its line in 6 s at the lowest power and in 0.75 s at full
-// power (a single-phase wallbox at 32 A).
+// A flow's dot crosses its line in 6 s at the lowest power and in 0.75 s at the
+// wallbox's rated power (defaulting to a 32 A single-phase wallbox).
 const SLOWEST_CROSSING = 6;
 const FASTEST_CROSSING = 0.75;
 const FULL_POWER = 7400;
 
 /** Seconds for the dot to cross a line, in quarter seconds so small changes keep the pace. */
-function flowDuration(watts: number): number {
-  const share = Math.min(1, Math.max(0, (watts - MIN_FLOW) / (FULL_POWER - MIN_FLOW)));
+function flowDuration(watts: number, fullPower: number = FULL_POWER): number {
+  const span = Math.max(1, fullPower - MIN_FLOW);
+  const share = Math.min(1, Math.max(0, (watts - MIN_FLOW) / span));
   const seconds = SLOWEST_CROSSING - share * (SLOWEST_CROSSING - FASTEST_CROSSING);
   return Math.round(seconds * 4) / 4;
+}
+
+/** Currency icon matching the charger's configured unit, falling back to a generic cash icon. */
+function currencyIcon(unit?: string): string {
+  switch (unit) {
+    case "EUR":
+      return mdiCurrencyEur;
+    case "USD":
+      return mdiCurrencyUsd;
+    case "GBP":
+      return mdiCurrencyGbp;
+    default:
+      return mdiCash;
+  }
 }
 
 // Largest radius of the bend from the solar circle down to the battery.
@@ -139,6 +158,7 @@ class ThorWallboxCard extends LitElement {
     _config: { state: true },
     _links: { state: true },
     _booking: { state: true },
+    _busy: { state: true },
   };
 
   declare hass?: HomeAssistant;
@@ -147,6 +167,13 @@ class ThorWallboxCard extends LitElement {
   // The booking dialog, while it is open: the form it opened with, and whether it replaces
   // a scheduled start (see booking-dialog.ts).
   declare _booking?: { form: BookingForm; replaces: boolean };
+  // A cloud command is in flight: disables control buttons to avoid duplicate OCPP commands.
+  declare _busy: boolean;
+
+  constructor() {
+    super();
+    this._busy = false;
+  }
 
   // Draws the battery's links again when the flow changes size.
   private _resizeObserver?: ResizeObserver;
@@ -210,7 +237,13 @@ class ThorWallboxCard extends LitElement {
   }
 
   protected shouldUpdate(changed: PropertyValues): boolean {
-    if (changed.has("_config") || !this.hass) {
+    if (
+      changed.has("_config") ||
+      changed.has("_links") ||
+      changed.has("_booking") ||
+      changed.has("_busy") ||
+      !this.hass
+    ) {
       return true;
     }
     const old = changed.get("hass") as HomeAssistant | undefined;
@@ -219,6 +252,8 @@ class ThorWallboxCard extends LitElement {
     }
     if (
       old.entities !== this.hass.entities ||
+      old.devices !== this.hass.devices ||
+      old.config !== this.hass.config ||
       old.locale !== this.hass.locale ||
       old.language !== this.hass.language ||
       old.themes !== this.hass.themes
@@ -406,11 +441,7 @@ class ThorWallboxCard extends LitElement {
     }
     const start = new Date(obj.state);
     if (obj.attributes.every_day && !Number.isNaN(start.getTime())) {
-      const time = new Intl.DateTimeFormat(hass.locale?.language || hass.language, {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(start);
-      return this._t("every_day", { time });
+      return this._t("every_day", { time: formatTimeInZone(hass, start) });
     }
     return hass.formatEntityState(obj);
   }
@@ -624,12 +655,19 @@ class ThorWallboxCard extends LitElement {
     }
   }
 
+  /** Rated wallbox power in W (from the grid import max attribute, in kW), else 7.4 kW. */
+  private _fullPower(): number {
+    const ratedKw = Number(this._obj("number.import_grid_power")?.attributes.max);
+    return Number.isFinite(ratedKw) && ratedKw > 0 ? ratedKw * 1000 : FULL_POWER;
+  }
+
   /**
    * The battery's links, with a running dot where power flows: up to the wallbox
    * while it feeds the car, from solar while it charges from it.
    */
   private _renderLinks(links: BatteryLinks, flow: Flow): TemplateResult {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const fullPower = this._fullPower();
     const link = (path: string | undefined, kind: string, watts: number) => {
       if (!path) {
         return nothing;
@@ -644,7 +682,7 @@ class ThorWallboxCard extends LitElement {
             ? svg`<circle r="2.5">
                 <animateMotion
                   path=${path}
-                  dur="${flowDuration(watts)}s"
+                  dur="${flowDuration(watts, fullPower)}s"
                   repeatCount="indefinite"
                   calcMode="linear"
                   keyPoints=${points}
@@ -669,7 +707,7 @@ class ThorWallboxCard extends LitElement {
     return html`
       <div
         class="line ${source} ${active ? "active" : ""} ${towardsLeft ? "reverse" : ""}"
-        style=${active ? `--flow-duration: ${flowDuration(watts)}s` : ""}
+        style=${active ? `--flow-duration: ${flowDuration(watts, this._fullPower())}s` : ""}
       >
         <div class="track">${active ? html`<span class="dot"></span>` : nothing}</div>
       </div>
@@ -692,7 +730,11 @@ class ThorWallboxCard extends LitElement {
         badges.push({ icon: mdiTimerOutline, label: this._t("duration"), text: formatMinutes(duration) });
       }
       if (cost && numericState(cost) !== undefined) {
-        badges.push({ icon: mdiCurrencyEur, label: this._t("cost"), text: hass.formatEntityState(cost) });
+        badges.push({
+          icon: currencyIcon(cost.attributes.unit_of_measurement),
+          label: this._t("cost"),
+          text: hass.formatEntityState(cost),
+        });
       }
     }
     if (!inSession && config.show_last_session !== false) {
@@ -926,7 +968,7 @@ class ThorWallboxCard extends LitElement {
         ? html`<div class="buttons">
             ${buttons.map(
               (button) => html`
-                <button class="button" type="button" ?disabled=${button.disabled} @click=${button.action}>
+                <button class="button" type="button" ?disabled=${button.disabled || this._busy} @click=${button.action}>
                   ${icon(button.icon, 20)}
                   <span>${button.label}</span>
                 </button>
@@ -935,7 +977,7 @@ class ThorWallboxCard extends LitElement {
           </div>`
         : nothing}
       ${schedule ? this._renderSchedule() : nothing}
-      ${modeObj ? this._renderModeSelect(modeObj, inSession || offline) : nothing}
+      ${modeObj ? this._renderModeSelect(modeObj, inSession || offline || this._busy) : nothing}
       ${inSession ? html`<p class="note">${this._t("locked_note")}</p>` : nothing}
     `;
   }
@@ -958,7 +1000,11 @@ class ThorWallboxCard extends LitElement {
    */
   private _canSchedule(status: string, mode: string | undefined, inSession: boolean): boolean {
     return (
-      this._config!.show_controls !== false && mode === "fast" && !inSession && status !== "unavailable"
+      this._config!.show_controls !== false &&
+      mode === "fast" &&
+      !inSession &&
+      status !== "unavailable" &&
+      status !== "faulted"
     );
   }
 
@@ -1055,6 +1101,10 @@ class ThorWallboxCard extends LitElement {
     entityId: string,
     data: Record<string, unknown> = {},
   ): Promise<void> {
+    if (this._busy) {
+      return;
+    }
+    this._busy = true;
     try {
       await this.hass!.callService(domain, service, { entity_id: entityId, ...data });
     } catch (err) {
@@ -1062,6 +1112,8 @@ class ThorWallboxCard extends LitElement {
       this.dispatchEvent(
         new CustomEvent("hass-notification", { detail: { message }, bubbles: true, composed: true }),
       );
+    } finally {
+      this._busy = false;
     }
   }
 
