@@ -596,3 +596,63 @@ async def test_tariff_outside_slots_while_charging(
     set_connector(mock_api, status="Charging", rate=0.25)
     await setup_integration(hass)
     assert state(hass, "sensor", "tariff").state == "0.25"
+
+
+async def test_duration_limit_upper_bound(hass: HomeAssistant, mock_api) -> None:
+    """Durations above 23 h 59 min (1439 min) are rejected before sending."""
+    set_charge_mode(mock_api, mode="fast")
+    await setup_integration(hass)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN,
+            "start_charging",
+            {"device_id": _device_id(hass), "limit": "duration", "value": 1440},
+            blocking=True,
+        )
+    mock_api.async_start_charging.assert_not_awaited()
+
+
+def test_manual_boost_rejects_same_start_and_end() -> None:
+    """Manual Boost requires distinct start and end times."""
+    charger = ThorCharger(sn=SN, summary={}, config=dict(CONFIG), charge_mode=dict(CHARGE_MODE))
+    with pytest.raises(PlanError):
+        boost_fields(charger, ChargePlan(boost_from=time(10, 0), boost_to=time(10, 0)), True)
+
+
+async def test_reservation_empty_cvalue2_falls_back_to_cvalue(
+    hass: HomeAssistant, mock_api
+) -> None:
+    """An empty or null cValue2 falls back to cValue for display."""
+    reservation = {**RESERVATION, "cValue": "15", "cValue2": ""}
+    set_connector(mock_api, status="Accepted", reservations=[reservation])
+    await setup_integration(hass)
+    assert state(hass, "sensor", "next_reservation").attributes["limit_value"] == 15.0
+
+
+async def test_cheapest_period_time_caps_at_five_slots(hass: HomeAssistant, mock_api) -> None:
+    """Six equal-price tariff slots produce at most five Off-peak slots."""
+    tariffs = [{"price": "0.15", "time": f"{h:02d}:00-{h:02d}:30"} for h in range(6)]
+    mock_api.async_get_config.side_effect = lambda sn: {**CONFIG, "priceConf": tariffs}
+    await setup_integration(hass)
+    await call(hass, "select", "select_option", "charge_mode", option="off_peak")
+    period = mock_api.async_set_charge_mode.await_args.args[2]["G_PeriodTime"]
+    assert len(period.split("&")) == 5
+
+
+async def test_boost_service_strips_seconds(hass: HomeAssistant, mock_api) -> None:
+    """Boost service times drop seconds so entities show whole minutes."""
+    await setup_integration(hass)
+    await hass.services.async_call(
+        DOMAIN,
+        "set_boost",
+        {
+            "device_id": _device_id(hass),
+            "enabled": True,
+            "type": "manual",
+            "from": "10:00:30",
+            "to": "12:00:45",
+        },
+        blocking=True,
+    )
+    assert state(hass, "time", "boost_from").state == "10:00:00"
+    assert state(hass, "time", "boost_to").state == "12:00:00"

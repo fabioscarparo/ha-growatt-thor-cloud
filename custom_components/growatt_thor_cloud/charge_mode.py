@@ -11,11 +11,13 @@ from __future__ import annotations
 from typing import Any
 
 from .coordinator import ThorCharger
-from .entity import to_float
+from .entity import plain_number, to_float
 
 MODE_FAST = "fast"
 MODE_OFF_PEAK = "offPeak"
 MODE_PV_LINKAGE = "pvLinkage"
+# Off-peak takes at most 5 slots (time1 to time5 in G_PeriodTime).
+MAX_OFF_PEAK_SLOTS = 5
 
 
 def supported_modes(charger: ThorCharger) -> list[str]:
@@ -42,8 +44,8 @@ def check_mode_change(charger: ThorCharger) -> None:
 
 
 def format_kw(value: object) -> str:
-    """Grid import in kW as sent in mode updates: plain decimal string ("0", "1.4")."""
-    return f"{to_float(value) or 0.0:g}"
+    """Power in kW as sent in updates ("0", "1.4"); anything unreadable is "0"."""
+    return plain_number(to_float(value) or 0.0)
 
 
 def cheapest_period_time(charger: ThorCharger) -> str:
@@ -56,7 +58,7 @@ def cheapest_period_time(charger: ThorCharger) -> str:
     if not slots:
         return ""
     lowest = min(price for price, _ in slots)
-    times = [time for price, time in slots if price == lowest]
+    times = [time for price, time in slots if price == lowest][:MAX_OFF_PEAK_SLOTS]
     return "&".join(f"time{i}={time}" for i, time in enumerate(times, 1))
 
 

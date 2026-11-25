@@ -40,7 +40,7 @@ from typing import Any
 
 from . import time_slots
 from .coordinator import GrowattThorCoordinator, ThorCharger
-from .entity import check_owner, to_float
+from .entity import check_owner, plain_number, to_float
 
 MAX_SLOTS = 6
 # Highest price per kWh. Growatt sets no bound; Home Assistant's number entity needs one,
@@ -66,19 +66,13 @@ class TariffSlot:
         """The slot as `addPrice` takes it."""
         return {
             "time": time_slots.label(self.start, self.end),
-            "price": price_text(self.price),
+            "price": plain_number(self.price, PRICE_DECIMALS),
             "name": "",
         }
 
     def as_attribute(self) -> dict[str, Any]:
         """The slot as shown in the "Tariff" sensor's attributes."""
         return {"from": f"{self.start:%H:%M}", "to": f"{self.end:%H:%M}", "price": self.price}
-
-
-def price_text(price: float) -> str:
-    """A price as Growatt stores it: plain decimal text without trailing zeros ("0.21")."""
-    text = f"{price:.{PRICE_DECIMALS}f}".rstrip("0").rstrip(".")
-    return text if text not in ("", "-0") else "0"
 
 
 def read_slots(charger: ThorCharger) -> list[TariffSlot]:

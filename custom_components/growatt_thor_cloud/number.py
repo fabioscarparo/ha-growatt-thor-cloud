@@ -40,6 +40,7 @@ from .load_balancing import (
 from .schedule import (
     LIVE_BOOST,
     LIVE_IMPORT_GRID,
+    MAX_DURATION_MINUTES,
     async_update_plan,
     effective_plan,
     ha_errors,
@@ -153,7 +154,7 @@ PLAN_NUMBERS: tuple[ThorPlanNumberDescription, ...] = (
         device_class=NumberDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         native_min_value=1,
-        native_max_value=24 * 60 - 1,  # Up to 23 h 59 min.
+        native_max_value=MAX_DURATION_MINUTES,  # Up to 23 h 59 min.
         native_step=1,
         mode=NumberMode.BOX,
         integer=True,

@@ -45,14 +45,22 @@ def base_offset(zone: str | None) -> timedelta | None:
 
 
 def dst_period(config: dict[str, Any]) -> tuple[MonthDay, MonthDay] | None:
-    """Daylight saving start and end as (month, day); None when not set."""
+    """Daylight saving start and end as (month, day); None when not set or invalid."""
     match = _DST.match(str(config.get("G_DaylightSavingTime") or ""))
     if not match:
         return None
     start_month, start_day, end_month, end_day = (int(part) for part in match.groups())
-    if not (start_month and end_month):
+    if not (start_month and start_day and end_month and end_day):
         return None
-    return (start_month, start_day), (end_month, end_day)
+    start, end = (start_month, start_day), (end_month, end_day)
+    if start == end:
+        return None
+    try:
+        date(2024, start_month, start_day)
+        date(2024, end_month, end_day)
+    except ValueError:
+        return None
+    return start, end
 
 
 def charger_offset(config: dict[str, Any], day: date) -> timedelta | None:

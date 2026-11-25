@@ -8,6 +8,7 @@ whose entities must show what the charger runs).
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import time
 
 import voluptuous as vol
 
@@ -127,7 +128,7 @@ async def _async_start(call: ServiceCall) -> None:
         setattr(plan, f"limit_{limit}", int(value) if limit == "duration" else value)
     if "start_time" in call.data:
         plan.start = "every_day" if call.data["every_day"] else "at_time"
-        plan.start_time = call.data["start_time"]
+        plan.start_time = call.data["start_time"].replace(second=0, microsecond=0)
     with ha_errors("Could not start charging"):
         await async_start(coordinator, sn, plan)
     # Also re-reads the reservations, which a timed start creates.
@@ -144,7 +145,15 @@ async def _async_cancel(call: ServiceCall) -> None:
 async def _async_boost(call: ServiceCall) -> None:
     coordinator, sn = _resolve(call.hass, call.data[ATTR_DEVICE_ID])
     plan = effective_plan(coordinator, sn)
-    updates = {field: call.data[key] for key, field in BOOST_FIELDS.items() if key in call.data}
+    updates = {
+        field: (
+            val.replace(second=0, microsecond=0)
+            if isinstance(val := call.data[key], time)
+            else val
+        )
+        for key, field in BOOST_FIELDS.items()
+        if key in call.data
+    }
     with ha_errors("Could not set Boost"):
         await async_set_boost(coordinator, sn, replace(plan, **updates), call.data["enabled"])
     # Keep the Boost entities in line with what was just sent.

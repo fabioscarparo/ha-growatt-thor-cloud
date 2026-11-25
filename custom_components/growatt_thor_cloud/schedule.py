@@ -15,8 +15,10 @@ from typing import Any
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util import dt as dt_util
 
+from . import time_slots
 from .api import GrowattThorError
 from .charge_mode import (
+    MAX_OFF_PEAK_SLOTS,
     MODE_FAST,
     MODE_OFF_PEAK,
     MODE_PV_LINKAGE,
@@ -27,17 +29,27 @@ from .charge_mode import (
 )
 from .const import CONNECTOR_ID, LIMIT_COST, LIMIT_DURATION, LIMIT_ENERGY
 from .coordinator import ChargePlan, GrowattThorCoordinator, ThorCharger
-from .entity import to_float
+from .entity import plain_number, to_float
 
 # Plan limit type -> session limit key (cKey), and back.
 LIMIT_KEYS = {"cost": LIMIT_COST, "energy": LIMIT_ENERGY, "duration": LIMIT_DURATION}
 LIMIT_TYPES = {key: limit for limit, key in LIMIT_KEYS.items()}
+# Duration limit: 1 minute to 23 h 59 min.
+MAX_DURATION_MINUTES = 24 * 60 - 1
 
 # Plan fields of the next start, which follow a scheduled start made outside HA.
 START_FIELDS = ("start", "start_time", "limit", "limit_cost", "limit_energy", "limit_duration")
 
 # Boost exists in PV Linkage (manual or smart) and Off-peak (smart only).
 BOOST_MODES = (MODE_PV_LINKAGE, MODE_OFF_PEAK)
+
+
+def reservation_limit_value(reservation: dict[str, Any]) -> float | None:
+    """Display value of a reservation limit: cValue2 when non-empty, else cValue."""
+    raw = reservation.get("cValue2")
+    if raw in (None, ""):
+        raw = reservation.get("cValue")
+    return to_float(raw)
 
 
 class PlanError(ValueError):
@@ -66,10 +78,11 @@ def limit_fields(plan: ChargePlan) -> tuple[str | None, str | None]:
     if value is None:
         raise PlanError(f"Set the {plan.limit} limit value first")
     if plan.limit == "duration":
-        if int(value) < 1:
-            raise PlanError("The duration limit must be at least 1 minute")
-        return LIMIT_DURATION, str(int(value))
-    return LIMIT_KEYS[plan.limit], f"{value:g}"
+        minutes = int(value)
+        if not 1 <= minutes <= MAX_DURATION_MINUTES:
+            raise PlanError("The duration limit must be between 1 minute and 23 h 59 min")
+        return LIMIT_DURATION, str(minutes)
+    return LIMIT_KEYS[plan.limit], plain_number(value)
 
 
 def next_start(at: time, now: datetime) -> datetime:
@@ -164,7 +177,7 @@ def _sync_start(plan: ChargePlan, charger: ThorCharger) -> None:
     plan.limit = LIMIT_TYPES.get(str(reservation.get("cKey") or ""), "none")
     if plan.limit != "none":
         # cValue2 is the value to display; cValue is echoed back to cancel.
-        value = to_float(reservation.get("cValue2", reservation.get("cValue")))
+        value = reservation_limit_value(reservation)
         if value is not None:
             setattr(plan, f"limit_{plan.limit}", int(value) if plan.limit == "duration" else value)
 
@@ -232,11 +245,13 @@ def boost_fields(charger: ThorCharger, plan: ChargePlan, enabled: bool) -> dict[
     if boost_type == "manual":
         if plan.boost_from is None or plan.boost_to is None:
             raise PlanError("Set the Boost from and to times first")
+        if plan.boost_from == plan.boost_to:
+            raise PlanError("Boost start and end times must differ")
         config = f"time1={plan.boost_from:%H:%M}-{plan.boost_to:%H:%M}"
     else:
         if plan.boost_departure is None or plan.boost_energy is None:
             raise PlanError("Set the Boost departure time and energy first")
-        config = f"contime={plan.boost_departure:%H:%M}&energy={plan.boost_energy:g}"
+        config = f"contime={plan.boost_departure:%H:%M}&energy={plain_number(plan.boost_energy)}"
     return charge_mode_fields(charger, mode, boost="1", boostType=boost_type, config=config)
 
 
@@ -289,15 +304,6 @@ def _sync_off_peak(plan: ChargePlan, charger: ThorCharger) -> None:
     plan.off_peak_extra = [f"{a:%H:%M}-{b:%H:%M}" for a, b in slots[OFF_PEAK_SLOTS:]]
 
 
-def _slot_minutes(slot_from: time, slot_to: time) -> set[int]:
-    """Minutes of the day a slot covers, both ends included, wrapping past midnight."""
-    start = slot_from.hour * 60 + slot_from.minute
-    end = slot_to.hour * 60 + slot_to.minute
-    if start <= end:
-        return set(range(start, end + 1))
-    return set(range(start, 24 * 60)) | set(range(end + 1))
-
-
 def period_time(plan: ChargePlan) -> str:
     """G_PeriodTime for the used slots (start != end) plus the extra ones kept.
 
@@ -313,9 +319,11 @@ def period_time(plan: ChargePlan) -> str:
     slots += _parse_periods("&".join(f"x={window}" for window in plan.off_peak_extra))
     if not slots:
         raise PlanError("Set at least one off-peak slot with a start different from its end")
+    if len(slots) > MAX_OFF_PEAK_SLOTS:
+        raise PlanError(f"Off-peak allows at most {MAX_OFF_PEAK_SLOTS} slots")
     covered: set[int] = set()
     for slot in slots:
-        minutes = _slot_minutes(*slot)
+        minutes = time_slots.minutes(*slot)
         if covered & minutes:
             raise PlanError(
                 "Off-peak slots cannot overlap (a slot may not start at the minute another ends)"
@@ -398,6 +406,12 @@ async def async_update_plan(
     updated = replace(plan, **{field: value})
     sent = False
     if live == LIVE_BOOST and is_boost_on(charger):
+        if (
+            field == "boost_type"
+            and value == "manual"
+            and charger.charge_mode.get("mode") == MODE_OFF_PEAK
+        ):
+            raise PlanError("Off-peak mode only supports smart Boost")
         await async_set_boost(coordinator, sn, updated, True)
         sent = True
     elif live == LIVE_IMPORT_GRID and is_import_grid_on(charger):

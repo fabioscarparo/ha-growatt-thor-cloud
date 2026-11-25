@@ -52,6 +52,10 @@ def test_daylight_saving() -> None:
     config = {"sysTimeZone": "UTC+10", "G_DaylightSavingTime": "10-04&04-05"}
     assert charger_offset(config, date(2026, 12, 25)) == timedelta(hours=11)
     assert charger_offset(config, date(2026, 6, 1)) == timedelta(hours=10)
+    # Invalid or equal dates are ignored rather than treated as southern hemisphere.
+    for broken in ("03-28&03-28", "02-30&10-25", "03-28&00-00"):
+        config = {"sysTimeZone": "UTC+1", "G_DaylightSavingTime": broken}
+        assert charger_offset(config, date(2026, 7, 1)) == timedelta(hours=1)
 
 
 def test_format_offset() -> None:

@@ -69,6 +69,16 @@ def to_float(value: object) -> float | None:
         return None
 
 
+def plain_number(value: float, decimals: int = 4) -> str:
+    """A number as Growatt takes it in text fields: "1.4", "20", "0.215".
+
+    At most `decimals` decimals, no trailing zeros and never scientific notation
+    (Python's "g" format writes 0.00001 as "1e-05", which the cloud does not read).
+    """
+    text = f"{value:.{decimals}f}".rstrip("0").rstrip(".")
+    return text if text not in ("", "-0") else "0"
+
+
 @dataclass
 class PlanStoredData(ExtraStoredData):
     """A staged plan value as saved across restarts (None = never set).

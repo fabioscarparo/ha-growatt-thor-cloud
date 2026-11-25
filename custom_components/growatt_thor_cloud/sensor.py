@@ -34,7 +34,13 @@ from .const import ACTIVE_STATES, CONNECTOR_STATUS, SESSION_STATES
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import ThorEntity, to_float
 from .load_balancing import schedule_attributes, turned_on
-from .schedule import LIMIT_TYPES, boost_params, is_boost_on, next_reservation
+from .schedule import (
+    LIMIT_TYPES,
+    boost_params,
+    is_boost_on,
+    next_reservation,
+    reservation_limit_value,
+)
 from .tariff import tariff_attributes
 
 # G_ExternalSamplingCurWring -> how the charger measures the grid.
@@ -186,11 +192,7 @@ def _next_reservation_attrs(charger: ThorCharger) -> dict[str, Any]:
         "every_day": str(reservation.get("loopType")) == "0",
         "limit": limit,
         # cValue2 is the value to display; cValue is echoed back to cancel.
-        "limit_value": (
-            None
-            if limit == "none"
-            else to_float(reservation.get("cValue2", reservation.get("cValue")))
-        ),
+        "limit_value": None if limit == "none" else reservation_limit_value(reservation),
     }
 
 
