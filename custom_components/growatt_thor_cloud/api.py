@@ -22,7 +22,7 @@ from .const import DEFAULT_BASE_URL, DEFAULT_USER_PREFIX, LIMIT_DURATION
 _LOGGER = logging.getLogger(__name__)
 
 LAN = 1  # Response language: 1 = English.
-USER_AGENT = "MyApp/8.5.6.0 ShinePhone"
+USER_AGENT = "MyApp/8.6.0.0 ShinePhone"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 CODE_OK = 0
 CODE_NOT_LOGGED_IN = 501

@@ -25,7 +25,7 @@ BASE_URL = os.environ.get("GROWATT_CHARGE_HOST", "https://evcharge.growatt.com")
 # The charger backend identifies a Growatt account as "SHINE" + account name.
 PREFIX = os.environ.get("GROWATT_CHARGE_PREFIX", "SHINE")
 LAN = 1  # Response language: 1 = English.
-USER_AGENT = "MyApp/8.5.6.0 ShinePhone Dalvik/2.1.0 (Linux; U; Android 14)"
+USER_AGENT = "MyApp/8.6.0.0 ShinePhone Dalvik/2.1.0 (Linux; U; Android 14)"
 
 # Keys whose values must never be printed: the token, credentials stored on the
 # charger and the installer password of the protected settings.
