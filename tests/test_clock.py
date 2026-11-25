@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from custom_components.growatt_thor_cloud.clock import (
+    ClockError,
     base_offset,
     charger_offset,
     format_offset,
@@ -17,7 +18,7 @@ from custom_components.growatt_thor_cloud.clock import (
 from custom_components.growatt_thor_cloud.const import DOMAIN
 
 from .common import set_config, setup_integration
-from .conftest import SN
+from .conftest import CHARGERS, SN
 
 ISSUE_ID = f"time_zone_{SN}"
 
@@ -93,3 +94,17 @@ async def test_clock_warning_withdrawn_on_unload(
 
     await hass.config_entries.async_unload(entry.entry_id)
     assert registry.async_get_issue(DOMAIN, ISSUE_ID) is None
+
+
+async def test_clock_warning_skipped_for_shared_charger(
+    hass: HomeAssistant, mock_api, freezer
+) -> None:
+    """Shared chargers are read-only: no Repairs issue is created and alignment is refused."""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-12-01 10:00:00+01:00")
+    mock_api.async_get_chargers.return_value = [{**CHARGERS[0], "type": 1}]
+    entry = await setup_integration(hass)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_ID) is None
+    with pytest.raises(ClockError):
+        await entry.runtime_data.async_align_clock(SN)
+    mock_api.async_set_config.assert_not_awaited()

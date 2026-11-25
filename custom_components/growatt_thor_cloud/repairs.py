@@ -61,6 +61,9 @@ class ClockFixFlow(RepairsFlow):
         """Show what will change; on confirmation, write it."""
         if (coordinator := self._coordinator()) is None:
             return self.async_abort(reason="not_loaded")
+        charger = coordinator.data[self._sn]
+        if charger.shared:
+            return self.async_abort(reason="cannot_write")
         try:
             if user_input is not None:
                 await coordinator.async_align_clock(self._sn)
@@ -71,9 +74,9 @@ class ClockFixFlow(RepairsFlow):
         except GrowattThorError:
             return self.async_abort(reason="cannot_write")
 
-        charger = coordinator.data[self._sn]
         now = dt_util.now()
         offset = charger_offset(charger.config, now.date())
+        ha_offset = now.utcoffset()
         start, _, end = daylight.partition("&")
         return self.async_show_form(
             step_id="confirm",
@@ -81,7 +84,7 @@ class ClockFixFlow(RepairsFlow):
                 "name": charger.summary.get("name") or self._sn,
                 "zone": time_zone(charger.config) or "",
                 "charger_offset": format_offset(offset) if offset is not None else "?",
-                "ha_offset": format_offset(now.utcoffset()),
+                "ha_offset": format_offset(ha_offset) if ha_offset is not None else "?",
                 "new_zone": zone,
                 # "03-28 → 10-31"; "-" without daylight saving.
                 "new_daylight": "-" if daylight == NO_DAYLIGHT_SAVING else f"{start} → {end}",

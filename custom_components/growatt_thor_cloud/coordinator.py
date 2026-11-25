@@ -262,11 +262,13 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
     async def async_align_clock(self, sn: str) -> None:
         """Set a charger's time zone and daylight saving to Home Assistant's clock.
 
-        Raises ClockError when no time zone of the charger matches, and
+        Raises ClockError when the charger is shared or no time zone matches, and
         GrowattThorApiError when the cloud refuses a write.
         """
-        target = await self.async_clock_target()
         charger = self.data[sn]
+        if charger.shared:
+            raise ClockError("Only the charger's owner can change its clock")
+        target = await self.async_clock_target()
         written = False
         for key, value in zip(("sysTimeZone", "G_DaylightSavingTime"), target, strict=True):
             if str(charger.config.get(key)) != value:
@@ -285,6 +287,8 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         once a period is over. Values already sent are sent again only after CLOCK_RETRY.
         """
         for sn in self.clock_sync & chargers.keys():
+            if chargers[sn].shared:
+                continue
             try:
                 target = self.clock_target()
             except ClockError:
@@ -319,7 +323,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
             if offset is None or ha_offset is None:
                 continue
             issue_id = clock_issue_id(sn)
-            if offset == ha_offset:
+            if offset == ha_offset or charger.shared:
                 ir.async_delete_issue(self.hass, DOMAIN, issue_id)
                 continue
             ir.async_create_issue(
