@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.12.0
+### New
+- *Firmware* (update entity): the firmware the charger runs and the newest one Growatt offers,
+  checked every few hours. Read-only: it cannot install.
+- *General - Load balancing all-day limit* also works on chargers without time slots (set to a
+  country other than Italy), where it writes the charger's limit setting itself.
+
+### Fixed
+- A setting written from Home Assistant no longer shows the old value again for a moment
+  before the charger confirms it.
+- *Last charge* also updates on chargers that record a session only once the car is unplugged.
+- Chargers shared with your account: no clock warning and no attempt to change their clock.
+- Re-authentication no longer fails while the account's charger list is momentarily empty, and
+  the login never sends an expired token.
+- Values the charger would reject are refused before sending: impossible daylight saving dates,
+  a duration limit over 23 h 59 min, a manual Boost that starts and ends at the same time, manual
+  Boost in Off-peak, more than 5 Off-peak slots, load balancing in PV Linkage.
+- A charger removed from the account turns its entities unavailable without errors.
+- Wallbox card: times follow Home Assistant's time zone, buttons wait for a command instead of
+  sending it twice, arrow keys work in the booking dialog, and the cost shows the charger's
+  currency.
+
 ## 0.11.1
 ### Changed
 - hacs.json: no `render_readme`, which HACS no longer reads.
