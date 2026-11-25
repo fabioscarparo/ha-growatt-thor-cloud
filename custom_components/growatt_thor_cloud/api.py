@@ -150,6 +150,14 @@ class GrowattThorApi:
         # userId is the account name: not needed, so not kept.
         return {k: v for k, v in data.items() if k != "userId"}
 
+    async def async_get_firmware(self, sn: str) -> dict[str, Any]:
+        """Installed and available firmware version (nowVersion, newVersion, needUpdate)."""
+        payload = {"cmd": "f_charger_version", "chargeId": sn}
+        data = (await self._call("/ocpp/tcharg/tfirmware/", payload)).get("data")
+        if isinstance(data, list):
+            return data[0] if data and isinstance(data[0], dict) else {}
+        return data if isinstance(data, dict) else {}
+
     # --- Write ------------------------------------------------------------
 
     async def async_set_config(self, sn: str, key: str, value: Any) -> None:

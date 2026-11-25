@@ -338,6 +338,11 @@
       "daylight_saving_end": {
         "name": "General - Daylight saving end"
       }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
     }
   },
   "issues": {

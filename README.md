@@ -127,6 +127,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | Entity | Type | Notes |
 |---|---|---|
 | Error code, Vendor error code | sensor | |
+| Firmware | update | the firmware the charger runs and the newest one Growatt offers, checked every few hours; read-only, without *Install* |
 | Grid sampling device, Meter type | sensor | CT or meter used by PV Linkage and load balancing; the meter's bus address in the `address` attribute |
 | IP address | sensor, disabled by default | |
 | Network connection, Network mode | sensor | Wi-Fi or cable; DHCP or static address |

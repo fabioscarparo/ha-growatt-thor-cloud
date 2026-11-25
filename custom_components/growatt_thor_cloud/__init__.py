@@ -25,6 +25,7 @@ PLATFORMS = [
     Platform.SWITCH,
     Platform.TEXT,
     Platform.TIME,
+    Platform.UPDATE,
 ]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)

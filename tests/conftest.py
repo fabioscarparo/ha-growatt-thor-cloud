@@ -129,6 +129,7 @@ def mock_api():
     api.async_get_charge_mode.side_effect = lambda sn, cid: copy.deepcopy(CHARGE_MODE)
     api.async_get_sessions.side_effect = lambda sn, count: []
     api.async_get_load_balancing.side_effect = lambda sn: copy.deepcopy(LOAD_BALANCING)
+    api.async_get_firmware.side_effect = lambda sn: {}
     api.async_get_time_zones.side_effect = lambda: list(TIME_ZONES)
     with (
         patch("custom_components.growatt_thor_cloud.GrowattThorApi", return_value=api),

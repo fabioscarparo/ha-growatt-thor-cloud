@@ -338,6 +338,11 @@
       "daylight_saving_end": {
         "name": "Generale - Fine ora legale"
       }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
     }
   },
   "issues": {

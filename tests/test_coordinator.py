@@ -184,5 +184,14 @@ async def test_removed_charger_turns_unavailable_without_errors(
         ("number", "tariff_all_day"),
         ("select", "charge_mode"),
         ("select", "time_zone"),
+        ("update", "firmware"),
     ):
         assert state(hass, domain, key).state == "unavailable"
+
+
+async def test_firmware_check_failure_is_not_fatal(hass: HomeAssistant, mock_api) -> None:
+    """Firmware version checks are secondary and never block setup or updates."""
+    mock_api.async_get_firmware.side_effect = GrowattThorApiError("code 1")
+    entry = await setup_integration(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert state(hass, "update", "firmware").state == "unknown"

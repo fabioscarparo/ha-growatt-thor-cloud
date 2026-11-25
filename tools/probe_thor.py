@@ -158,6 +158,12 @@ def main() -> int:
         dump(f"selectLimitPower {sn}", post("/ocpp/api/", {
             "cmd": "selectLimitPower", "chargeId": sn, "userId": user_id, "lan": LAN,
         }, token))
+        dump(f"meterInfo {sn}", post("/ocpp/meterInfo", {
+            "cmd": "meterInfo", "chargeId": sn, "userId": user_id, "lan": LAN,
+        }, token))
+        dump(f"f_charger_version {sn}", post("/ocpp/tcharg/tfirmware/", {
+            "cmd": "f_charger_version", "chargeId": sn, "userId": user_id, "lan": LAN,
+        }, token))
         dump(f"chargeRecord {sn} (last {LAST_SESSIONS})", post("/ocpp/api/chargeRecord", {
             "sn": sn, "page": 1, "psize": LAST_SESSIONS, "userId": user_id, "lan": LAN,
         }, token))

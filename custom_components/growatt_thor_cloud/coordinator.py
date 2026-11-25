@@ -47,6 +47,8 @@ CONFIRM_DELAY = timedelta(seconds=90)
 # Automatic clock alignment sends the same values again only after this long, in case the
 # charger did not take them.
 CLOCK_RETRY = timedelta(days=1)
+# Firmware availability changes rarely: check at most a few times a day.
+FIRMWARE_REFRESH_INTERVAL = timedelta(hours=6)
 
 type GrowattThorConfigEntry = ConfigEntry[GrowattThorCoordinator]
 
@@ -78,6 +80,8 @@ class ThorCharger:
     sessions: list[dict[str, Any]] = field(default_factory=list)
     # Load balancing schedule (selectLimitPower); empty where load balancing is not supported.
     load_balancing: dict[str, Any] = field(default_factory=dict)
+    # Firmware check (/ocpp/tcharg/tfirmware/ f_charger_version): nowVersion, newVersion, needUpdate.
+    firmware: dict[str, Any] = field(default_factory=dict)
 
     @property
     def price_conf(self) -> list[dict[str, Any]]:
@@ -182,6 +186,7 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         self._failures = 0
         self._last_success: datetime | None = None
         self._config_fetched_at: datetime | None = None
+        self._firmware_fetched_at: datetime | None = None
         # When to read the settings again after a write, once the charger has confirmed it.
         self._confirm_at: datetime | None = None
         # Read the reservations on the next update: a write may have changed them.
@@ -344,6 +349,10 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
             or self._config_fetched_at is None
             or now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL
         )
+        refresh_firmware = (
+            self._firmware_fetched_at is None
+            or now - self._firmware_fetched_at >= FIRMWARE_REFRESH_INTERVAL
+        )
         if refresh_config and not self.time_zones:
             try:
                 self.time_zones = await self.api.async_get_time_zones()
@@ -402,6 +411,13 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 except GrowattThorApiError as err:
                     # Secondary data, like the reservations.
                     _LOGGER.debug("Load balancing schedule not available for %s: %s", sn, err)
+            firmware = previous.firmware if previous else {}
+            if refresh_firmware or previous is None:
+                try:
+                    firmware = await self.api.async_get_firmware(sn)
+                except GrowattThorApiError as err:
+                    # Secondary data: keep the last check instead of failing the update.
+                    _LOGGER.debug("Firmware version check not available for %s: %s", sn, err)
             chargers[sn] = ThorCharger(
                 sn=sn,
                 summary=summary,
@@ -412,9 +428,12 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                 last_session=last_session,
                 sessions=sessions,
                 load_balancing=load_balancing,
+                firmware=firmware,
             )
         if refresh_config:
             self._config_fetched_at = now
+        if refresh_firmware:
+            self._firmware_fetched_at = now
         if confirm_due:
             self._confirm_at = None
         self._reservations_stale = False

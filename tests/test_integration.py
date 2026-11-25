@@ -506,3 +506,28 @@ async def test_working_mode(hass: HomeAssistant, mock_api, raw: str, expected: s
     set_config(mock_api, G_WorkingMode=raw)
     await setup_integration(hass)
     assert _state(hass, "sensor", "working_mode").state == expected
+
+
+async def test_firmware_update_entity(hass: HomeAssistant, mock_api) -> None:
+    """The read-only Firmware update entity reports installed and available versions."""
+    mock_api.async_get_firmware.side_effect = lambda sn: {
+        "nowVersion": "V1.0",
+        "newVersion": "V1.0",
+        "needUpdate": "false",
+    }
+    entry = await setup_integration(hass)
+    update = _state(hass, "update", "firmware")
+    assert update.state == "off"
+    assert update.attributes["installed_version"] == "V1.0"
+    assert update.attributes["latest_version"] == "V1.0"
+
+    mock_api.async_get_firmware.side_effect = lambda sn: {
+        "nowVersion": "V1.0",
+        "newVersion": "V2.0",
+        "needUpdate": "true",
+    }
+    entry.runtime_data._firmware_fetched_at = None
+    await entry.runtime_data.async_refresh()
+    update = _state(hass, "update", "firmware")
+    assert update.state == "on"
+    assert update.attributes["latest_version"] == "V2.0"

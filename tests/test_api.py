@@ -253,3 +253,25 @@ async def test_debug_log_masks_credentials(hass, aioclient_mock, caplog) -> None
     assert "G_MaxCurrent" in caplog.text
     for secret in ("tok-123", "pw-456", "MyNet", "pwhash-789"):
         assert secret not in caplog.text
+
+
+async def test_firmware_version_payload(hass, aioclient_mock) -> None:
+    """Firmware check queries /ocpp/tcharg/tfirmware/ with cmd=f_charger_version."""
+    aioclient_mock.post(LOGIN_URL, json={"code": 0, "token": "t"})
+    aioclient_mock.post(
+        f"{DEFAULT_BASE_URL}/ocpp/tcharg/tfirmware/",
+        json={
+            "code": 0,
+            "data": [{"nowVersion": "V1.0", "newVersion": "V1.1", "needUpdate": "true"}],
+        },
+    )
+    api = GrowattThorApi(async_get_clientsession(hass), "user", "hash")
+
+    info = await api.async_get_firmware("SN1")
+    assert info == {"nowVersion": "V1.0", "newVersion": "V1.1", "needUpdate": "true"}
+    assert aioclient_mock.mock_calls[-1][2] == {
+        "userId": "SHINEuser",
+        "lan": 1,
+        "cmd": "f_charger_version",
+        "chargeId": "SN1",
+    }

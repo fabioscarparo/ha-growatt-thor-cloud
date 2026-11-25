@@ -37,7 +37,7 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
 | `/ocpp/api/chargeRecord` | `sn, page, psize, userId, lan` | Sessions, newest first (see below) |
 | `/ocpp/meterInfo` | `cmd:"meterInfo", chargeId, lan` | `data` = power measured by the CT or meter, W |
 | `/ocpp/api/timeZoneList2` | `{}` | Time zones for `sysTimeZone` |
-| `/ocpp/tcharg/tfirmware/` | `cmd:"f_charger_version", chargeId, lan` | `data[0]`: `nowVersion`, `newVersion`, `needUpdate` |
+| `/ocpp/tcharg/tfirmware/` | `cmd:"f_charger_version", chargeId, lan` | `data[0]`: `nowVersion`, `newVersion`, `needUpdate` (text, `"false"` while nothing newer is offered; read as yes for `"true"` or `1`) |
 | `/ocpp/api/` | `cmd` + fields | Misc commands by `cmd`, below |
 
 `/ocpp/api/` commands:
