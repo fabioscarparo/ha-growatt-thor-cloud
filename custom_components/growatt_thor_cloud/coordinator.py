@@ -348,10 +348,11 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
         # Sequential on purpose, to keep the load on Growatt's cloud low.
         now = dt_util.utcnow()
         confirm_due = self._confirm_at is not None and now >= self._confirm_at
+        waiting_confirm = self._confirm_at is not None and now < self._confirm_at
         refresh_config = (
             confirm_due
             or self._config_fetched_at is None
-            or now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL
+            or (not waiting_confirm and now - self._config_fetched_at >= CONFIG_REFRESH_INTERVAL)
         )
         refresh_firmware = (
             self._firmware_fetched_at is None
@@ -391,12 +392,14 @@ class GrowattThorCoordinator(DataUpdateCoordinator[dict[str, ThorCharger]]):
                     _LOGGER.debug("Reservation list not available for %s: %s", sn, err)
             last_session = previous.last_session if previous else {}
             sessions = previous.sessions if previous else []
-            # The history only changes when a session ends: read it with the settings,
-            # and right after a transaction stops.
-            ended = (
-                previous is not None
-                and previous.connector.get("status") in ACTIVE_STATES
-                and connector.get("status") not in ACTIVE_STATES
+            # The history changes when a session ends: read it with the settings, when
+            # charging stops, and again when a closing (Finishing) session leaves SESSION_STATES
+            # (some firmwares upload the session record only once the connector returns to Available).
+            prev_status = previous.connector.get("status") if previous else None
+            cur_status = connector.get("status")
+            ended = previous is not None and (
+                (prev_status in ACTIVE_STATES and cur_status not in ACTIVE_STATES)
+                or (prev_status in SESSION_STATES and cur_status not in SESSION_STATES)
             )
             if refresh_config or previous is None or ended:
                 try:

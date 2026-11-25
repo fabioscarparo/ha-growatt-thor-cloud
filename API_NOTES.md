@@ -62,7 +62,8 @@ clock), `ctime` (minutes), `energy` (kWh), `cost`, `chargemode` (authorization u
 APP, 2 = RFID, 3 = Plug&Charge), `userId` (idTag), `transactionId`. `sysStartTime` /
 `sysEndTime` are those wall-clock times read as UTC+8, not true epochs. `pvEnergy` and
 `consume` were 0 in every entry seen. The live data of `charge/info` goes back to 0 once a
-session is over.
+session is over. The record of a session may appear only once the connector is back to
+`Available`, after `Finishing`.
 
 Field meanings:
 - `charge/info` `data`: `current` A, `voltage` V, `energy` kWh (session), `ctime` minutes,

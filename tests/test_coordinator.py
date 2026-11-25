@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.growatt_thor_cloud.api import GrowattThorApiError
 
-from .common import call, set_charging, setup_integration, state
+from .common import call, set_charging, set_connector, setup_integration, state
 
 
 async def test_outage_keeps_data_then_backs_off(hass: HomeAssistant, mock_api, freezer) -> None:
@@ -167,6 +167,26 @@ async def test_written_setting_kept_until_confirmed(
     assert state(hass, "switch", "warm_up").state == "off"
 
 
+async def test_write_near_config_refresh_keeps_optimistic_value(
+    hass: HomeAssistant, mock_api, freezer
+) -> None:
+    """A write just as the 5-minute settings timer expires still waits for confirmation."""
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    assert mock_api.async_get_config.await_count == 1
+
+    freezer.tick(timedelta(minutes=5))
+    await call(hass, "switch", "turn_on", "warm_up")
+    await hass.async_block_till_done()
+    assert mock_api.async_get_config.await_count == 1
+    assert state(hass, "switch", "warm_up").state == "on"
+
+    freezer.tick(timedelta(seconds=120))
+    await coordinator.async_refresh()
+    assert mock_api.async_get_config.await_count == 2
+    assert state(hass, "switch", "warm_up").state == "off"
+
+
 async def test_removed_charger_turns_unavailable_without_errors(
     hass: HomeAssistant, mock_api
 ) -> None:
@@ -187,6 +207,22 @@ async def test_removed_charger_turns_unavailable_without_errors(
         ("update", "firmware"),
     ):
         assert state(hass, domain, key).state == "unavailable"
+
+
+async def test_history_read_again_when_finishing_ends(hass: HomeAssistant, mock_api) -> None:
+    """Charge history is refreshed both when charging pauses/stops and when Finishing ends."""
+    set_charging(mock_api)
+    entry = await setup_integration(hass)
+    coordinator = entry.runtime_data
+    assert mock_api.async_get_sessions.await_count == 1
+
+    set_connector(mock_api, status="Finishing")
+    await coordinator.async_refresh()
+    assert mock_api.async_get_sessions.await_count == 2
+
+    set_connector(mock_api, status="Available")
+    await coordinator.async_refresh()
+    assert mock_api.async_get_sessions.await_count == 3
 
 
 async def test_firmware_check_failure_is_not_fatal(hass: HomeAssistant, mock_api) -> None:
