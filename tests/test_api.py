@@ -55,6 +55,8 @@ async def test_relogin_on_expired_token(hass, aioclient_mock) -> None:
         "/ocpp/user",
         "/ocpp/api/configInfo",
     ]
+    # Re-login must not send the stale Authorization header to /ocpp/user.
+    assert "Authorization" not in aioclient_mock.mock_calls[1][3]
 
 
 async def test_login_rejected(hass, aioclient_mock) -> None:

@@ -291,6 +291,7 @@ class GrowattThorApi:
                     "password": self._password_hash,
                     "lan": LAN,
                 },
+                include_auth=False,
             )
         except GrowattThorApiError:
             self._login_retry_at = time.monotonic() + LOGIN_COOLDOWN
@@ -326,10 +327,12 @@ class GrowattThorApi:
             raise GrowattThorApiError(f"{path} failed: {data.get('data')}")
         return data
 
-    async def _request(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _request(
+        self, path: str, payload: dict[str, Any], *, include_auth: bool = True
+    ) -> dict[str, Any]:
         """POST JSON and decode the reply; any transport or format problem is an API error."""
         headers = {"User-Agent": USER_AGENT}
-        if self._token:
+        if include_auth and self._token:
             headers["Authorization"] = self._token  # Raw token, no "Bearer" prefix.
         try:
             async with self._session.post(

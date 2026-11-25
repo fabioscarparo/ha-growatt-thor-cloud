@@ -23,7 +23,8 @@ Field meanings were checked against a real THOR 07AS-P-V1 (firmware
   (`{"cmd":"devList","userId":...,"userServerUrl":...,"lan":...}`).
 - `password` = MD5 hex where a single-digit byte is padded with `c` instead of `0`
   (same scheme as the inverter API).
-- Response contains `token`, sent as `Authorization` header on every other call.
+- Response contains `token`, sent as `Authorization` header on every other call. The login
+  itself goes without the header, so a stale token is never sent with it.
 - Logout: `cmd: "shineLoginout"`.
 
 ## Read

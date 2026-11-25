@@ -50,16 +50,19 @@ class GrowattThorConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             username = user_input[CONF_USERNAME].strip()
-            # Lower-cased so "User" and "user" cannot become two entries.
-            await self.async_set_unique_id(username.lower())
-            self._abort_if_unique_id_configured()
-            password_hash = hash_password(user_input[CONF_PASSWORD])
-            errors = await self._async_validate(username, password_hash)
-            if not errors:
-                return self.async_create_entry(
-                    title=username,
-                    data={CONF_USERNAME: username, CONF_PASSWORD_HASH: password_hash},
-                )
+            if not username:
+                errors = {"base": "invalid_auth"}
+            else:
+                # Lower-cased so "User" and "user" cannot become two entries.
+                await self.async_set_unique_id(username.lower())
+                self._abort_if_unique_id_configured()
+                password_hash = hash_password(user_input[CONF_PASSWORD])
+                errors = await self._async_validate(username, password_hash)
+                if not errors:
+                    return self.async_create_entry(
+                        title=username,
+                        data={CONF_USERNAME: username, CONF_PASSWORD_HASH: password_hash},
+                    )
         return self.async_show_form(
             step_id="user",
             # Keep the username on error, never echo the password back.
@@ -83,7 +86,9 @@ class GrowattThorConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             password_hash = hash_password(user_input[CONF_PASSWORD])
-            errors = await self._async_validate(entry.data[CONF_USERNAME], password_hash)
+            errors = await self._async_validate(
+                entry.data[CONF_USERNAME], password_hash, require_chargers=False
+            )
             if not errors:
                 return self.async_update_reload_and_abort(
                     entry, data_updates={CONF_PASSWORD_HASH: password_hash}
@@ -95,17 +100,19 @@ class GrowattThorConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"username": entry.data[CONF_USERNAME]},
         )
 
-    async def _async_validate(self, username: str, password_hash: str) -> dict[str, str]:
-        """Log in and list chargers; returns form errors, empty if all is fine."""
+    async def _async_validate(
+        self, username: str, password_hash: str, *, require_chargers: bool = True
+    ) -> dict[str, str]:
+        """Log in and (on initial setup) list chargers; returns form errors, empty if ok."""
         api = GrowattThorApi(async_get_clientsession(self.hass), username, password_hash)
         try:
             await api.login()
-            chargers = await api.async_get_chargers()
+            chargers = await api.async_get_chargers() if require_chargers else None
         except GrowattThorAuthError:
             return {"base": "invalid_auth"}
         except GrowattThorApiError:
             return {"base": "cannot_connect"}
-        if not chargers:
+        if require_chargers and not chargers:
             # Valid account without a charger: nothing to create entities for.
             return {"base": "no_chargers"}
         return {}

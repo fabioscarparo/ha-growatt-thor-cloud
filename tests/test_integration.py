@@ -66,6 +66,31 @@ async def test_user_flow_errors(hass: HomeAssistant, mock_api) -> None:
     )
     assert result["errors"] == {"base": "no_chargers"}
 
+    # Blank usernames are rejected without hitting the cloud.
+    mock_api.login.reset_mock()
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "   ", CONF_PASSWORD: "x"}
+    )
+    assert result["errors"] == {"base": "invalid_auth"}
+    mock_api.login.assert_not_awaited()
+
+
+async def test_reauth_succeeds_even_with_empty_charger_list(hass: HomeAssistant, mock_api) -> None:
+    """Re-authentication verifies credentials without failing on a temporarily empty list."""
+    entry = await setup_integration(hass)
+    mock_api.async_get_chargers.return_value = []
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=entry.data,
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PASSWORD: "new-secret"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_PASSWORD_HASH] == hash_password("new-secret")
+
 
 async def test_entities(hass: HomeAssistant, mock_api) -> None:
     """API payloads map to the expected entity states and units."""
