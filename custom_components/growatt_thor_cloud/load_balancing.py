@@ -29,11 +29,15 @@ one day. A schedule is always written with load balancing on.
 
 The charger reports the limit it applies in the `G_ExternalLimitPower` setting.
 
+Schedules by time slot are offered for chargers whose `country` setting is Italy. A
+charger set to another country, with no schedule, takes one limit for the whole day
+straight from `G_ExternalLimitPower`, written like any other setting.
+
 How the integration exposes it
 ------------------------------
 - sensor "Load balancing limit": `G_ExternalLimitPower`, with the slots as attributes;
 - number "General - Load balancing all-day limit": one limit for the whole day, written
-  as a single all-day slot;
+  as a single all-day slot, or as `G_ExternalLimitPower` on a charger without schedules;
 - action `growatt_thor_cloud.set_load_balancing`: any schedule, from automations.
 """
 
@@ -135,11 +139,34 @@ def schedule_attributes(charger: ThorCharger) -> dict[str, Any] | None:
 
 
 def all_day_limit(charger: ThorCharger) -> float | None:
-    """The limit when the schedule is a single all-day slot; None for any other schedule."""
+    """The limit for the whole day; None while the schedule has other slots.
+
+    It is the limit of a single all-day slot or, without any schedule (as on chargers
+    that take G_ExternalLimitPower directly, see uses_direct_limit), G_ExternalLimitPower.
+    """
     slots = read_slots(charger.load_balancing)
-    if len(slots) == 1 and (slots[0].start, slots[0].end) == ALL_DAY and slots[0].days == DAYS:
-        return slots[0].power
-    return None
+    if slots:
+        if len(slots) == 1 and (slots[0].start, slots[0].end) == ALL_DAY and slots[0].days == DAYS:
+            return slots[0].power
+        return None
+    power = to_float(charger.config.get("G_ExternalLimitPower"))
+    return power if power is not None and power > 0 else None
+
+
+def uses_direct_limit(charger: ThorCharger) -> bool:
+    """Whether the limit is G_ExternalLimitPower itself rather than a selectLimitPower schedule.
+
+    Schedules by time slot are offered for chargers set to Italy; a charger set to another
+    country, without a schedule, takes the limit directly.
+    """
+    schedule = charger.load_balancing
+    country = str(charger.config.get("country") or "").strip().lower()
+    return (
+        bool(country)
+        and country != "italy"
+        and not schedule.get("config")
+        and schedule.get("cid") is None
+    )
 
 
 def validate(slots: Sequence[Slot]) -> None:
@@ -185,9 +212,38 @@ async def async_set_slots(
     check_owner(charger)
     if not charger.supports("isSupportLoadBalancing"):
         raise LoadBalancingError("This charger does not support load balancing")
+    if charger.charge_mode.get("mode") == MODE_PV_LINKAGE:
+        raise LoadBalancingError("Load balancing is not used in PV Linkage")
     validate(slots)
     schedule = charger.load_balancing
     label = _label(schedule)
     config = [slot.to_api(f"{label}{number}") for number, slot in enumerate(slots, 1)]
     await coordinator.api.async_set_load_balancing(sn, True, schedule.get("cid"), config)
     charger.load_balancing = {**schedule, "isEnable": 1, "config": config}
+    charger.config["G_ExternalLimitPowerEnable"] = 1
+    if len(slots) == 1 and (slots[0].start, slots[0].end) == ALL_DAY and slots[0].days == DAYS:
+        charger.config["G_ExternalLimitPower"] = format_kw(slots[0].power)
+
+
+async def async_set_all_day_limit(
+    coordinator: GrowattThorCoordinator, sn: str, power: float
+) -> None:
+    """Set one household limit for the whole day.
+
+    Uses `G_ExternalLimitPower` directly on non-Italy chargers that have no
+    `selectLimitPower` schedule, and a single all-day slot everywhere else.
+    """
+    charger = coordinator.data[sn]
+    if not uses_direct_limit(charger):
+        await async_set_slots(coordinator, sn, [Slot(*ALL_DAY, power)])
+        return
+    check_owner(charger)
+    if not charger.supports("isSupportLoadBalancing"):
+        raise LoadBalancingError("This charger does not support load balancing")
+    if charger.charge_mode.get("mode") == MODE_PV_LINKAGE:
+        raise LoadBalancingError("Load balancing is not used in PV Linkage")
+    if not MIN_POWER <= power <= MAX_POWER:
+        raise LoadBalancingError(f"The limit must be {MIN_POWER:g} to {MAX_POWER:g} kW")
+    text = format_kw(power)
+    await coordinator.api.async_set_config(sn, "G_ExternalLimitPower", text)
+    charger.config["G_ExternalLimitPower"] = text

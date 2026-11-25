@@ -115,7 +115,7 @@ chargers*) are refused with a message, and the entities keep showing their value
 | General - Clock from Home Assistant | switch | off by default; on: keeps the charger's time zone and daylight saving period on Home Assistant's, renewing the daylight saving dates every year |
 | General - Daylight saving start, end | text | `MM-DD`, empty when not set; unavailable while *General - Clock from Home Assistant* is on |
 | General - Load balancing | switch | keeps the home's grid draw under the set limit; unavailable in PV Linkage |
-| General - Load balancing all-day limit | number | kW: one limit for the whole day; setting it replaces any time slots, and it shows unknown while there are some |
+| General - Load balancing all-day limit | number | kW: one limit for the whole day; setting it replaces any time slots, and it shows unknown while there are some. On chargers without time slots (set to a country other than Italy) it is the charger's limit setting itself |
 | General - Max current | number | 6-32 A; up to 16 A on 3.6 kW and 11 kW chargers |
 | General - Time zone | select | the charger's time zone, among those Growatt offers; unavailable while *General - Clock from Home Assistant* is on |
 | General - Warm-up | switch | when the EV is full, keeps supplying power to preheat it in cold weather |

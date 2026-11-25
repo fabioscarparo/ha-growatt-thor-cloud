@@ -29,12 +29,10 @@ from .charge_mode import MODE_PV_LINKAGE
 from .coordinator import GrowattThorConfigEntry, ThorCharger
 from .entity import PlanStoredData, ThorEntity, check_owner, to_float
 from .load_balancing import (
-    ALL_DAY,
     MAX_POWER,
     MIN_POWER,
-    Slot,
     all_day_limit,
-    async_set_slots,
+    async_set_all_day_limit,
     in_use as load_balancing_in_use,
 )
 from .schedule import (
@@ -331,7 +329,7 @@ class ThorLoadBalancingNumber(ThorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         with ha_errors("Could not set the load balancing limit"):
-            await async_set_slots(self.coordinator, self._sn, [Slot(*ALL_DAY, round(value, 1))])
+            await async_set_all_day_limit(self.coordinator, self._sn, round(value, 1))
         # The limit sensor shows the new schedule too.
         self.coordinator.async_update_listeners()
         await self.coordinator.async_refresh_after_write()

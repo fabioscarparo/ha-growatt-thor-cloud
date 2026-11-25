@@ -100,7 +100,9 @@ Field meanings:
 - `G_RandDelayChargeTime`: random delay before a session starts, s (0 = off, 600 by default,
   1-1800).
 - `G_ExternalLimitPower`: highest grid import for load balancing, kW: the limit the charger
-  applies. It matched the power of the `selectLimitPower` slots in every reading.
+  applies. It matched the power of the `selectLimitPower` slots in every reading. Schedules by
+  time slot are offered for chargers whose `country` (in `configInfo`) is Italy; a charger set
+  to another country, without a schedule, takes the limit by writing `G_ExternalLimitPower`.
 - `UnlockConnectorOnEVSideDisconnect`: `"true"` = the cable is unlocked at the charger once it
   is unplugged from the EV, `"false"` = it stays locked (sent as string).
 - Tariff: `priceConf` (in `list` and `configInfo`) = `[{"time": "HH:MM-HH:MM", "price": "0.21"}]`,

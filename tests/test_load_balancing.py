@@ -227,3 +227,38 @@ async def test_action_rejects_out_of_range_power(hass: HomeAssistant, mock_api) 
     with pytest.raises(vol.Invalid):
         await _set_schedule(hass, [{"from": "00:00", "to": "23:59", "power": 0.5}])
     mock_api.async_set_load_balancing.assert_not_awaited()
+
+
+async def test_set_all_day_updates_switch_and_limit_optimistically(
+    hass: HomeAssistant, mock_api
+) -> None:
+    """Writing an all-day limit turns load balancing on and updates the limit sensor at once."""
+    await _setup(hass, mock_api, enabled=0)
+    assert state(hass, "switch", "load_balancing").state == "off"
+    assert state(hass, "sensor", "load_balancing_limit").state == "unavailable"
+
+    await call(hass, "number", "set_value", "load_balancing_all_day", value=4.5)
+    assert state(hass, "switch", "load_balancing").state == "on"
+    assert state(hass, "sensor", "load_balancing_limit").state == "4.5"
+
+
+async def test_action_refused_in_pv_linkage(hass: HomeAssistant, mock_api) -> None:
+    """Load balancing schedules cannot be set while the charger runs in PV Linkage."""
+    set_charge_mode(mock_api, mode="pvLinkage")
+    set_config(mock_api, G_ExternalLimitPowerEnable=1)
+    await setup_integration(hass)
+
+    with pytest.raises(ServiceValidationError):
+        await _set_schedule(hass, [{"from": "00:00", "to": "23:59", "power": 5}])
+    mock_api.async_set_load_balancing.assert_not_awaited()
+
+
+async def test_non_italy_direct_limit_fallback(hass: HomeAssistant, mock_api) -> None:
+    """Non-Italy chargers without a schedule read and write G_ExternalLimitPower directly."""
+    await _setup(hass, mock_api, schedule={}, country="Germany", G_ExternalLimitPower="11")
+    assert state(hass, "number", "load_balancing_all_day").state == "11.0"
+
+    await call(hass, "number", "set_value", "load_balancing_all_day", value=8.5)
+    mock_api.async_set_config.assert_awaited_once_with(SN, "G_ExternalLimitPower", "8.5")
+    mock_api.async_set_load_balancing.assert_not_awaited()
+    assert state(hass, "number", "load_balancing_all_day").state == "8.5"
